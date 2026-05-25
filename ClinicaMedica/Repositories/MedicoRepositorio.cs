@@ -1,8 +1,9 @@
+using ClinicaMedica.Interfaces;
 using ClinicaMedica.Models;
 
 namespace ClinicaMedica.Repositories;
 
-public class MedicoRepositorio : RepositorioJson<Medico>
+public class MedicoRepositorio : RepositorioJson<Medico>, IMedicoRepositorio
 {
     public MedicoRepositorio(string caminhoArquivo) : base(caminhoArquivo) { }
 

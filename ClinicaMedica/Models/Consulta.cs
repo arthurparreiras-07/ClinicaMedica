@@ -42,6 +42,20 @@ public class Consulta
         Observacoes = observacoes;
     }
 
+    // Construtor para hidratar objetos carregados do banco de dados.
+    // Define _dataHora diretamente para não disparar a validação de data passada.
+    internal Consulta(int id, int medicoId, int pacienteId, DateTime dataHoraRaw,
+        string observacoes, string diagnostico, StatusConsulta status)
+    {
+        Id = id;
+        MedicoId = medicoId;
+        PacienteId = pacienteId;
+        _dataHora = dataHoraRaw;
+        Observacoes = observacoes;
+        Diagnostico = diagnostico;
+        Status = status;
+    }
+
     public void Cancelar()
     {
         if (Status == StatusConsulta.Realizada)
