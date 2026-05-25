@@ -5,14 +5,14 @@ Curso: Análise e Desenvolvimento de Sistemas
 
 ## Integrantes
 
-| Nome | Responsabilidade |
-|------|-----------------|
-| (integrante 1) | Models / Domínio |
-| (integrante 2) | Repositories / Persistência |
+| Nome           | Responsabilidade             |
+| -------------- | ---------------------------- |
+| (integrante 1) | Models / Domínio             |
+| (integrante 2) | Repositories / Persistência  |
 | (integrante 3) | Services / Regras de negócio |
-| (integrante 4) | UI Console |
-| (integrante 5) | Documentação |
-| (integrante 6) | Testes / Validações |
+| (integrante 4) | UI Console                   |
+| (integrante 5) | Documentação                 |
+| (integrante 6) | Testes / Validações          |
 
 ## Descrição
 
@@ -90,15 +90,13 @@ ClinicaMedica/
 │   │       └── Shared/ConsoleHelper.cs             # Utilitários de console
 │   ├── Program.cs
 │   └── ClinicaMedica.csproj
-├── README.md
-├── ENTREGA_PARCIAL.md
-├── PROGRESSO.md
-└── DOCUMENTACAO.md
+└── README.md
 ```
 
 ## Armazenamento de dados
 
 Os dados são salvos automaticamente em `App/Database/Json/`:
+
 - `App/Database/Json/medicos.json`
 - `App/Database/Json/pacientes.json`
 - `App/Database/Json/consultas.json`

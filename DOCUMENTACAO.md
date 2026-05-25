@@ -14,7 +14,7 @@
 6. [Camada de Serviços (Services)](#6-camada-de-serviços-services)
 7. [Camada de Interface com Usuário (UI)](#7-camada-de-interface-com-usuário-ui)
 8. [Tratamento de Exceções](#8-tratamento-de-exceções)
-9. [Persistência em JSON](#9-persistência-em-json)
+9. [Persistência de Dados](#9-persistência-de-dados)
 10. [Os Quatro Pilares da POO no Projeto](#10-os-quatro-pilares-da-poo-no-projeto)
 11. [Relação com as Especificações do Trabalho](#11-relação-com-as-especificações-do-trabalho)
 12. [Fluxo de Dados Completo](#12-fluxo-de-dados-completo)
@@ -27,9 +27,12 @@
 O sistema foi desenvolvido para gerenciar uma clínica médica, permitindo:
 
 - Cadastrar e consultar **médicos** (com CRM e especialidade)
-- Cadastrar e consultar **pacientes** (com CPF, convênio e data de nascimento)
-- **Agendar, cancelar e concluir consultas**, respeitando regras de negócio rígidas
-- Persistir todos os dados em arquivos **JSON** entre as execuções
+- Cadastrar e consultar **pacientes** (com CPF validado, convênio e data de nascimento)
+- **Agendar, cancelar e concluir consultas**, respeitando três regras de negócio rígidas
+- **Registrar diagnósticos e prescrições** médicas em consultas realizadas
+- Consultar a **agenda diária**, o histórico por médico e o prontuário por paciente
+- Filtrar médicos por **especialidade** no momento do agendamento
+- Persistir todos os dados em **banco de dados SQLite** (padrão) ou em **arquivos JSON** (modo alternativo)
 - Interagir com o usuário por meio de um **menu interativo no console**
 
 O sistema é inteiramente desenvolvido em **C# com .NET 10**, aplicando os quatro pilares da Orientação a Objetos em situações concretas e justificáveis — não como demonstração teórica, mas como consequência natural do design.
@@ -41,25 +44,23 @@ O sistema é inteiramente desenvolvido em **C# com .NET 10**, aplicando os quatr
 O projeto adota uma **arquitetura em camadas** (Layered Architecture), onde cada camada tem uma responsabilidade bem definida e só se comunica com a camada imediatamente abaixo dela:
 
 ```
-┌─────────────────────────────────────┐
-│           UI (MenuConsole)          │  ← Interage com o usuário
-├─────────────────────────────────────┤
-│       Services (AgendamentoService) │  ← Regras de negócio
-├─────────────────────────────────────┤
-│   Repositories (MedicoRepositorio,  │  ← Acesso e persistência de dados
-│   PacienteRepositorio,              │
-│   ConsultaRepositorio)              │
-├─────────────────────────────────────┤
-│    Models (Pessoa, Medico,          │  ← Entidades do domínio
-│    Paciente, Consulta)              │
-└─────────────────────────────────────┘
+┌─────────────────────────────────────────────┐
+│  UI (MenuConsole + submenus especializados)  │  ← Interage com o usuário
+├─────────────────────────────────────────────┤
+│       Services (AgendamentoService)          │  ← Regras de negócio
+├─────────────────────────────────────────────┤
+│  Repositories (JSON ou SQLite, via contrato) │  ← Acesso e persistência de dados
+├─────────────────────────────────────────────┤
+│    Models (Pessoa, Medico, Paciente,         │  ← Entidades do domínio
+│    Consulta, Prescricao)                     │
+└─────────────────────────────────────────────┘
 ```
 
 **Por que essa estrutura?**
 
-Cada camada tem um único motivo para mudar (Princípio da Responsabilidade Única). Se a interface mudar de console para gráfica, apenas a camada UI precisa ser reescrita. Se o armazenamento mudar de JSON para banco de dados, apenas os repositórios precisam ser alterados. As regras de negócio e os modelos permanecem intactos.
+Cada camada tem um único motivo para mudar (Princípio da Responsabilidade Única). Se a interface mudar de console para gráfica, apenas a camada UI precisa ser reescrita. Se o armazenamento mudar de SQLite para outro banco, apenas os repositórios precisam ser alterados. As regras de negócio e os modelos permanecem intactos.
 
-Esse isolamento também facilita a evolução incremental prevista nas especificações: o trabalho exige que o sistema evolua de console para interface gráfica e de JSON para banco de dados — a arquitetura em camadas torna essas evoluções cirúrgicas, sem impacto nas demais partes.
+Esse isolamento também facilita a evolução incremental prevista nas especificações: o trabalho exige que o sistema evolua de console para interface gráfica — a arquitetura em camadas torna essa evolução cirúrgica, sem impacto nas demais partes.
 
 ---
 
@@ -67,7 +68,7 @@ Esse isolamento também facilita a evolução incremental prevista nas especific
 
 ### 3.1 Pessoa (classe abstrata)
 
-**Arquivo:** [ClinicaMedica/Models/Pessoa.cs](ClinicaMedica/Models/Pessoa.cs)
+**Arquivo:** [App/Backend/Core/Models/Pessoa.cs](App/Backend/Core/Models/Pessoa.cs)
 
 `Pessoa` é a classe base abstrata de toda a hierarquia de pessoas no sistema. Ela encapsula os atributos comuns a qualquer pessoa: `Id`, `Nome`, `Cpf` e `Telefone`.
 
@@ -84,9 +85,25 @@ Porque nunca faz sentido instanciar uma "pessoa genérica" no contexto deste sis
 **Validações internas:**
 
 - `Nome` não pode ser vazio (validado no setter via property)
-- `Cpf` deve ter exatamente 11 dígitos numéricos
+- `Cpf` deve ter exatamente 11 dígitos numéricos **e** passar pelo algoritmo dos dois dígitos verificadores
 
-Essas validações estão no setter das properties, não em métodos externos — isso é encapsulamento: o objeto é responsável pela própria integridade.
+A validação do CPF vai além de verificar o comprimento: ela rejeita sequências repetidas (como `000.000.000-00`) e calcula os dois dígitos verificadores segundo o algoritmo oficial da Receita Federal. Isso está encapsulado em `ValidarDigitosCpf()`, método `private static` dentro de `Pessoa`.
+
+```csharp
+public string Cpf
+{
+    get => _cpf;
+    set
+    {
+        var cpfLimpo = value?.Replace(".", "").Replace("-", "").Trim() ?? "";
+        if (cpfLimpo.Length != 11 || !cpfLimpo.All(char.IsDigit))
+            throw new ArgumentException("CPF inválido. Informe 11 dígitos numéricos.");
+        if (!ValidarDigitosCpf(cpfLimpo))
+            throw new ArgumentException("CPF inválido. Os dígitos verificadores não conferem.");
+        _cpf = cpfLimpo;
+    }
+}
+```
 
 **Método abstrato `ExibirInformacoes()`:**
 
@@ -96,20 +113,25 @@ Cada subclasse implementa sua própria versão desse método, que é o contrato 
 
 ### 3.2 Medico
 
-**Arquivo:** [ClinicaMedica/Models/Medico.cs](ClinicaMedica/Models/Medico.cs)
+**Arquivo:** [App/Backend/Medicos/Models/Medico.cs](App/Backend/Medicos/Models/Medico.cs)
 
 Herda de `Pessoa` e adiciona:
 
-- `Crm`: identificador único do conselho médico (validado: não pode ser vazio)
-- `Especialidade`: área de atuação (validada: não pode vazia)
+- `Crm`: identificador único do conselho médico (validado: não pode ser vazio; normalizado para maiúsculas)
+- `Especialidade`: área de atuação (validada: não pode ser vazia)
 
-O método `ExibirInformacoes()` é sobrescrito para exibir CRM e especialidade além dos dados básicos.
+O método `ExibirInformacoes()` é sobrescrito para exibir CRM e especialidade além dos dados básicos:
+
+```csharp
+public override string ExibirInformacoes() =>
+    $"Dr(a). {Nome} | CRM: {Crm} | {Especialidade} | Tel: {Telefone}";
+```
 
 ---
 
 ### 3.3 Paciente
 
-**Arquivo:** [ClinicaMedica/Models/Paciente.cs](ClinicaMedica/Models/Paciente.cs)
+**Arquivo:** [App/Backend/Pacientes/Models/Paciente.cs](App/Backend/Pacientes/Models/Paciente.cs)
 
 Herda de `Pessoa` e adiciona:
 
@@ -121,38 +143,94 @@ Herda de `Pessoa` e adiciona:
 
 ### 3.4 Consulta
 
-**Arquivo:** [ClinicaMedica/Models/Consulta.cs](ClinicaMedica/Models/Consulta.cs)
+**Arquivo:** [App/Backend/Consultas/Models/Consulta.cs](App/Backend/Consultas/Models/Consulta.cs)
 
 Entidade que representa o agendamento. Contém:
 
 - `Id`, `MedicoId`, `PacienteId`, `DataHora`, `Observacoes`
-- `Status`: enum com três valores — `Agendada`, `Realizada`, `Cancelada`
+- `Status`: enum `StatusConsulta` com três valores — `Agendada`, `Realizada`, `Cancelada`
+- `Diagnostico`: texto registrado após a consulta ser marcada como realizada
+- `Prescricoes`: lista de medicamentos prescritos
 
-**Por que usar enum para status?**
+**Backing fields e propriedades somente leitura:**
 
-Enum elimina strings mágicas ("cancelada", "CANCELADA", "Cancelada") que causariam bugs de comparação. O compilador garante que apenas valores válidos sejam atribuídos.
+Os campos `_status`, `_diagnostico` e `_prescricoes` são privados. Externamente ao objeto, `Status`, `Diagnostico` e `Prescricoes` são acessíveis apenas para leitura:
+
+```csharp
+public StatusConsulta Status => _status;
+public string Diagnostico => _diagnostico;
+public IReadOnlyList<Prescricao> Prescricoes => _prescricoes;
+```
+
+Isso garante que o estado da consulta só mude por meio dos métodos que validam as transições.
 
 **Métodos de transição de estado:**
 
 ```csharp
-public void Cancelar()        // Agendada → Cancelada
-public void MarcarRealizada() // Agendada → Realizada
+public void Cancelar()           // Agendada → Cancelada (impede cancelar Realizada)
+public void MarcarRealizada()    // Agendada → Realizada (impede realizar Cancelada)
+public void RegistrarDiagnostico(string diagnostico)  // exige Status == Realizada
+public void AdicionarPrescricao(Prescricao prescricao) // exige Status == Realizada
 ```
 
-Esses métodos validam a transição: não é possível cancelar uma consulta já realizada, por exemplo. A lógica de "o que pode mudar e quando" fica dentro da própria entidade — isso é encapsulamento de comportamento, não só de dados.
+Cada método valida a transição e escreve diretamente no backing field — sem passar pelo setter público (que não existe).
+
+**Construtores especializados:**
+
+`Consulta` tem três construtores:
+1. Parameterless (`public Consulta()`) — exigido pela serialização JSON e pelo SQLite.
+2. Construtor de criação (`Consulta(id, medicoId, pacienteId, dataHora, observacoes)`) — usado pelo `AgendamentoService` ao agendar. Passa `DataHora` pelo setter, que valida a data no passado.
+3. Construtor de hidratação (`[JsonConstructor] Consulta(id, medicoId, pacienteId, dataHora, observacoes, diagnostico, status, prescricoes)`) — usado pelo deserializador JSON e pelo repositório SQLite. Define `_dataHora` diretamente, ignorando a validação de data passada para dados históricos.
+
+O atributo `[JsonConstructor]` instrui o `System.Text.Json` a usar o terceiro construtor, evitando que consultas salvas com datas no passado causem exceção na leitura.
+
+**`DefinirPrescricoes()` (internal):**
+
+O repositório SQLite armazena prescrições em tabela separada (`Prescricoes`) e as carrega depois de hidratar o objeto `Consulta`. O método `internal void DefinirPrescricoes(IEnumerable<Prescricao>)` permite esse preenchimento posterior sem expor a coleção publicamente:
+
+```csharp
+internal void DefinirPrescricoes(IEnumerable<Prescricao> prescricoes)
+{
+    _prescricoes.Clear();
+    _prescricoes.AddRange(prescricoes);
+}
+```
+
+A visibilidade `internal` restringe o acesso ao assembly — apenas os repositórios (que estão no mesmo projeto) podem chamar esse método.
+
+---
+
+### 3.5 Prescricao
+
+**Arquivo:** [App/Backend/Consultas/Models/Prescricao.cs](App/Backend/Consultas/Models/Prescricao.cs)
+
+Representa um medicamento prescrito em uma consulta realizada. Contém:
+
+- `Medicamento`: nome do remédio
+- `Dosagem`: dose e frequência
+- `Instrucoes`: orientações adicionais (opcional)
+
+`Prescricao` é um **value object** simples: não tem Id próprio nem métodos de negócio. Sua existência é subordinada a `Consulta` — uma composição.
+
+```csharp
+public override string ToString() =>
+    string.IsNullOrEmpty(Instrucoes)
+        ? $"{Medicamento} — {Dosagem}"
+        : $"{Medicamento} — {Dosagem} ({Instrucoes})";
+```
 
 ---
 
 ## 4. Camada de Interfaces
 
-**Arquivo:** [ClinicaMedica/Interfaces/IRepositorio.cs](ClinicaMedica/Interfaces/IRepositorio.cs)
+**Arquivo:** [App/Backend/Core/Repositories/IRepositorio.cs](App/Backend/Core/Repositories/IRepositorio.cs)
 
 ```csharp
 public interface IRepositorio<T>
 {
     void Adicionar(T entidade);
     T? BuscarPorId(int id);
-    IReadOnlyList<T> ListarTodos();
+    IEnumerable<T> ListarTodos();
     void Atualizar(T entidade);
     void Remover(int id);
     void Salvar();
@@ -163,120 +241,181 @@ public interface IRepositorio<T>
 
 A interface define um **contrato**: qualquer repositório que a implemente garante suporte às operações básicas de CRUD. O parâmetro genérico `<T>` permite que a mesma interface sirva para `Medico`, `Paciente` e `Consulta` sem duplicação de código.
 
-Isso também é o que permite **inversão de dependência** no futuro: a `AgendamentoService` poderia receber `IRepositorio<Medico>` em vez de `MedicoRepositorio` diretamente, tornando fácil substituir a implementação concreta (ex.: trocar JSON por banco de dados) sem alterar a lógica de negócio.
+Isso também permite **inversão de dependência**: `AgendamentoService` recebe `IConsultaRepositorio`, `IMedicoRepositorio` e `IPacienteRepositorio` via construtor — nunca as classes concretas. Trocar JSON por SQLite ou vice-versa exige apenas mudar o `Program.cs`.
+
+**Interfaces especializadas:**
+
+Cada entidade tem sua própria interface que estende `IRepositorio<T>` com buscas específicas:
+
+| Interface | Arquivo | Métodos adicionais |
+|---|---|---|
+| `IMedicoRepositorio` | [App/Backend/Medicos/Interfaces/IMedicoRepositorio.cs](App/Backend/Medicos/Interfaces/IMedicoRepositorio.cs) | `BuscarPorCrm`, `BuscarPorEspecialidade` |
+| `IPacienteRepositorio` | [App/Backend/Pacientes/Interfaces/IPacienteRepositorio.cs](App/Backend/Pacientes/Interfaces/IPacienteRepositorio.cs) | `BuscarPorCpf` |
+| `IConsultaRepositorio` | [App/Backend/Consultas/Interfaces/IConsultaRepositorio.cs](App/Backend/Consultas/Interfaces/IConsultaRepositorio.cs) | `BuscarPorMedico`, `BuscarPorPaciente`, `BuscarPorData`, `ContarConsultasAtivasMedicoNoDia`, `PacienteTemConsultaComMedicoNoDia` |
 
 ---
 
 ## 5. Camada de Repositórios (Repositories)
 
-### 5.1 RepositorioJson (classe abstrata base)
+O projeto oferece **duas implementações de repositório** para cada entidade: uma baseada em JSON e outra em SQLite. Ambas implementam as mesmas interfaces (`IMedicoRepositorio`, `IPacienteRepositorio`, `IConsultaRepositorio`) e são intercambiáveis sem alterar nada nas camadas acima.
 
-**Arquivo:** [ClinicaMedica/Repositories/RepositorioJson.cs](ClinicaMedica/Repositories/RepositorioJson.cs)
+### 5.1 RepositorioJson (classe abstrata base — JSON)
 
-Esta é a peça central da persistência. `RepositorioJson<T>` é uma classe abstrata que implementa `IRepositorio<T>` e fornece a infraestrutura de leitura e escrita em JSON para qualquer tipo de entidade.
+**Arquivo:** [App/Database/Json/RepositorioJson.cs](App/Database/Json/RepositorioJson.cs)
 
-**Como funciona internamente:**
+`RepositorioJson<T>` implementa `IRepositorio<T>` e fornece a infraestrutura de leitura e escrita em JSON para qualquer tipo de entidade.
 
-- Mantém uma `List<T>` em memória como cache dos dados
+**Como funciona:**
+
+- Mantém uma `List<T> _dados` em memória como cache dos dados
 - No construtor, chama `Carregar()`, que lê o arquivo JSON do disco e deserializa para a lista
-- `Salvar()` serializa a lista de volta para o arquivo JSON com indentação legível
-- O caminho dos arquivos é resolvido em `Program.cs` via `[CallerFilePath]`, apontando sempre para o diretório do código-fonte
+- `Salvar()` serializa `_dados` de volta para o arquivo JSON com indentação legível
+- Se o arquivo não existir ou estiver corrompido, a lista começa vazia — sem crash
 
 **Opções de serialização configuradas:**
 
 ```csharp
 new JsonSerializerOptions
 {
-    PropertyNameCaseInsensitive = true,   // Tolera variações de capitalização no JSON
-    WriteIndented = true,                 // JSON legível por humanos
-    Converters = { new JsonStringEnumConverter() } // Enum gravado como texto ("Agendada"), não número
+    PropertyNameCaseInsensitive = true,
+    WriteIndented = true,
+    Converters = { new JsonStringEnumConverter() }
 }
 ```
 
-Gravar o enum como texto (ex.: `"Status": "Agendada"`) é uma decisão intencional: se alguém abrir o arquivo JSON para depurar ou editar manualmente, o valor é compreensível. Se fosse gravado como `0`, `1`, `2`, seria opaco.
+Gravar o enum como texto (ex.: `"Status": "Agendada"`) é uma decisão intencional: o arquivo JSON permanece legível por humanos. Se fosse gravado como número (`0`, `1`, `2`), seria opaco para depuração manual.
 
 **Por que abstrata e não concreta?**
 
-Porque há comportamentos que variam por tipo de entidade — principalmente `Adicionar()`, que precisa auto-incrementar o `Id` de forma específica para cada tipo. A classe base fornece o mecanismo de persistência; as subclasses especializam os comportamentos de domínio.
+Porque a lógica de auto-incremento de Id e as validações de unicidade variam por tipo de entidade. A classe base fornece o mecanismo de persistência; as subclasses especializam os comportamentos de domínio.
 
 ---
 
-### 5.2 MedicoRepositorio
+### 5.2 MedicoRepositorio (JSON)
 
-**Arquivo:** [ClinicaMedica/Repositories/MedicoRepositorio.cs](ClinicaMedica/Repositories/MedicoRepositorio.cs)
+**Arquivo:** [App/Backend/Medicos/Repositories/MedicoRepositorio.cs](App/Backend/Medicos/Repositories/MedicoRepositorio.cs)
 
 Herda de `RepositorioJson<Medico>` e adiciona:
 
-- **`Adicionar()`** sobrescrito: calcula o próximo `Id` como `Max(ids) + 1`, evitando IDs duplicados mesmo após remoções. Valida unicidade do CRM antes de persistir.
-- **`BuscarPorCrm()`**: busca case-insensitive (CRM `"SP-12345"` == `"sp-12345"`)
-- **`BuscarPorEspecialidade()`**: busca parcial — `"cardio"` encontra `"Cardiologia"`
+- **`Adicionar()`**: calcula o próximo `Id` como `Max(ids) + 1`. Valida unicidade do CRM antes de persistir, lançando `InvalidOperationException` em caso de duplicata.
+- **`BuscarPorCrm()`**: busca com normalização (`.Trim().ToUpper()`) — CRM `"sp-12345"` encontra `"SP-12345"`.
+- **`BuscarPorEspecialidade()`**: busca parcial case-insensitive — `"cardio"` encontra `"Cardiologia"`.
 
 ---
 
-### 5.3 PacienteRepositorio
+### 5.3 PacienteRepositorio (JSON)
 
-**Arquivo:** [ClinicaMedica/Repositories/PacienteRepositorio.cs](ClinicaMedica/Repositories/PacienteRepositorio.cs)
+**Arquivo:** [App/Backend/Pacientes/Repositories/PacienteRepositorio.cs](App/Backend/Pacientes/Repositories/PacienteRepositorio.cs)
 
 Herda de `RepositorioJson<Paciente>` e adiciona:
 
-- **`Adicionar()`** sobrescrito: auto-incrementa Id, valida unicidade do CPF
-- **`BuscarPorCpf()`**: normaliza o CPF antes de comparar — remove pontos e traços (`123.456.789-00` → `12345678900`), evitando falsos negativos por formatação diferente
+- **`Adicionar()`**: auto-incrementa Id, valida unicidade do CPF.
+- **`BuscarPorCpf()`**: normaliza o CPF antes de comparar (remove pontos e traços) — evita falsos negativos por formatação diferente.
 
 ---
 
-### 5.4 ConsultaRepositorio
+### 5.4 ConsultaRepositorio (JSON)
 
-**Arquivo:** [ClinicaMedica/Repositories/ConsultaRepositorio.cs](ClinicaMedica/Repositories/ConsultaRepositorio.cs)
+**Arquivo:** [App/Backend/Consultas/Repositories/ConsultaRepositorio.cs](App/Backend/Consultas/Repositories/ConsultaRepositorio.cs)
 
 O repositório mais rico em métodos de consulta:
 
 - **`BuscarPorMedico(medicoId)`**: filtra consultas de um médico específico
 - **`BuscarPorPaciente(pacienteId)`**: histórico do paciente
-- **`BuscarPorData(data)`**: agenda do dia
+- **`BuscarPorData(data)`**: agenda do dia (comparação por `.Date`, ignorando hora)
 - **`ContarConsultasAtivasMedicoNoDia(medicoId, data)`**: conta consultas não canceladas, usado para validar o limite de 10 por dia
-- **`PacienteTemConsultaComMedicoNoDia(pacienteId, medicoId, data)`**: verifica conflito de agendamento (regra: um paciente por médico por dia)
+- **`PacienteTemConsultaComMedicoNoDia(medicoId, pacienteId, data)`**: verifica conflito de agendamento
 
-Esses métodos existem aqui e não no Service porque são operações de **consulta de dados** — responsabilidade do repositório. O Service usa esses métodos para tomar decisões de negócio.
+---
+
+### 5.5 RepositorioBD (classe abstrata base — SQLite)
+
+**Arquivo:** [App/Database/Sqlite/RepositorioBD.cs](App/Database/Sqlite/RepositorioBD.cs)
+
+`RepositorioBD<T>` é o equivalente SQLite de `RepositorioJson<T>`. Implementa `IRepositorio<T>` e fornece:
+
+- `ConexaoBanco _banco`: objeto que gerencia a string de conexão e abre conexões (`CriarConexao()`)
+- `Salvar()`: no-op — SQLite persiste imediatamente em cada operação, sem cache em memória
+- `ObterUltimoId()`: helper que lê `last_insert_rowid()` após um INSERT
+
+**ConexaoBanco:**
+
+**Arquivo:** [App/Database/Sqlite/ConexaoBanco.cs](App/Database/Sqlite/ConexaoBanco.cs)
+
+Encapsula a string de conexão e abre cada conexão com `PRAGMA foreign_keys = ON`, garantindo que as restrições de chave estrangeira sejam respeitadas (no SQLite, foreign keys são opt-in).
+
+**InicializadorBanco:**
+
+**Arquivo:** [App/Database/Sqlite/InicializadorBanco.cs](App/Database/Sqlite/InicializadorBanco.cs)
+
+Executa o DDL idempotente (`CREATE TABLE IF NOT EXISTS`) na inicialização do sistema, criando as quatro tabelas — `Medicos`, `Pacientes`, `Consultas`, `Prescricoes` — se ainda não existirem. A tabela `Prescricoes` referencia `Consultas` com `ON DELETE CASCADE`, garantindo que ao remover uma consulta, suas prescrições sejam removidas automaticamente.
+
+---
+
+### 5.6 Repositórios SQLite concretos
+
+**Arquivos:**
+- [App/Backend/Medicos/Repositories/MedicoRepositorioSql.cs](App/Backend/Medicos/Repositories/MedicoRepositorioSql.cs)
+- [App/Backend/Pacientes/Repositories/PacienteRepositorioSql.cs](App/Backend/Pacientes/Repositories/PacienteRepositorioSql.cs)
+- [App/Backend/Consultas/Repositories/ConsultaRepositorioSql.cs](App/Backend/Consultas/Repositories/ConsultaRepositorioSql.cs)
+
+Cada um herda de `RepositorioBD<T>` e implementa as operações CRUD via queries SQL parametrizadas (sem concatenação de strings — sem risco de SQL Injection).
+
+`ConsultaRepositorioSql` tem cuidado especial com `Prescricoes`: como estão em tabela separada, após carregar cada `Consulta` o repositório chama `consulta.DefinirPrescricoes(CarregarPrescricoes(conn, consulta.Id))` para popular a coleção interna sem expor um setter público.
 
 ---
 
 ## 6. Camada de Serviços (Services)
 
-**Arquivo:** [ClinicaMedica/Services/AgendamentoService.cs](ClinicaMedica/Services/AgendamentoService.cs)
+**Arquivo:** [App/Backend/Consultas/Services/AgendamentoService.cs](App/Backend/Consultas/Services/AgendamentoService.cs)
 
-Esta é a camada de **regras de negócio**. O `AgendamentoService` recebe os três repositórios via construtor (injeção de dependências manual) e coordena as operações que envolvem mais de uma entidade ou mais de uma validação.
+Esta é a camada de **regras de negócio**. O `AgendamentoService` recebe os três repositórios via construtor (injeção de dependências) e coordena as operações que envolvem mais de uma entidade ou mais de uma validação.
 
 ### Método `Agendar()`
 
 É o método mais importante do sistema. Executa as seguintes validações **em ordem**:
 
-1. O médico existe? → lança `ArgumentException`
-2. O paciente existe? → lança `ArgumentException`
-3. A `DataHora` é no passado? → lança `ArgumentException`
-4. O médico já tem 10 consultas ativas nesse dia? → lança `LimiteConsultasDiariasException`
-5. O paciente já tem consulta com esse médico nesse dia? → lança `ConsultaConflitanteException`
+1. O médico existe? → lança `KeyNotFoundException`
+2. O paciente existe? → lança `KeyNotFoundException`
+3. O médico já tem 10 consultas ativas nesse dia? → lança `LimiteConsultasDiariasException`
+4. O paciente já tem consulta com esse médico nesse dia? → lança `ConsultaConflitanteException`
 
-Somente após todas as validações passarem, a consulta é criada e salva.
+Somente após todas as validações passarem, a consulta é criada e salva. A validação de data passada é feita pelo setter `DataHora` no construtor de `Consulta`.
 
 **Por que lançar exceções customizadas em vez de retornar bool?**
 
-Porque retornar `bool` perde a informação do **motivo** da falha. Com exceções tipadas, a UI pode capturar `LimiteConsultasDiariasException` e exibir uma mensagem específica sobre o limite diário, e capturar `ConsultaConflitanteException` com uma mensagem diferente sobre conflito de horário. O fluxo de erro é tratado com precisão, sem cascata de `if` na UI.
+Porque retornar `bool` perde a informação do **motivo** da falha. Com exceções tipadas, a UI captura `LimiteConsultasDiariasException` com uma mensagem específica sobre o limite diário, e `ConsultaConflitanteException` com uma mensagem diferente sobre conflito. O fluxo de erro é tratado com precisão, sem cascata de `if` na UI.
 
 ### Métodos `Cancelar()` e `MarcarRealizada()`
 
-Buscam a consulta por Id, delegam a transição de estado para o próprio objeto `Consulta` (que valida se a transição é permitida), e salvam.
+Buscam a consulta por Id, delegam a transição de estado para o próprio objeto `Consulta` (que valida se a transição é permitida) e salvam.
+
+### Métodos de prontuário
+
+```csharp
+public void RegistrarDiagnostico(int consultaId, string diagnostico)
+public void AdicionarPrescricao(int consultaId, Prescricao prescricao)
+```
+
+Ambos buscam a consulta, delegam para o método correspondente na entidade (que valida o status) e persistem.
 
 ### Métodos de listagem
 
-`ListarPorMedico()`, `ListarPorPaciente()` e `ListarPorData()` delegam para o repositório e retornam resultados ordenados por `DataHora`.
+`ListarPorMedico()`, `ListarPorPaciente()`, `ListarPorData()` e `ListarTodas()` delegam para o repositório e retornam resultados ordenados por `DataHora`.
 
 ---
 
 ## 7. Camada de Interface com Usuário (UI)
 
-**Arquivo:** [ClinicaMedica/UI/MenuConsole.cs](ClinicaMedica/UI/MenuConsole.cs)
+A UI é organizada em quatro classes, todas no namespace `ClinicaMedica.UI.TextUI`:
 
-O `MenuConsole` é a única classe que interage diretamente com o usuário via `Console.ReadLine()` e `Console.WriteLine()`. Ela conhece o `AgendamentoService` e os repositórios, mas nunca contém lógica de negócio — apenas coleta dados, chama o serviço/repositório e exibe resultados.
+| Classe | Arquivo | Responsabilidade |
+|---|---|---|
+| `MenuConsole` | [App/UI/TextUI/MenuConsole.cs](App/UI/TextUI/MenuConsole.cs) | Menu principal; instancia os submenus e despacha para eles |
+| `MedicosMenu` | [App/UI/TextUI/Medicos/MedicosMenu.cs](App/UI/TextUI/Medicos/MedicosMenu.cs) | Submenu de médicos (cadastrar, listar, buscar por CRM, buscar por especialidade) |
+| `PacientesMenu` | [App/UI/TextUI/Pacientes/PacientesMenu.cs](App/UI/TextUI/Pacientes/PacientesMenu.cs) | Submenu de pacientes (cadastrar, listar, buscar por CPF) |
+| `ConsultasMenu` | [App/UI/TextUI/Consultas/ConsultasMenu.cs](App/UI/TextUI/Consultas/ConsultasMenu.cs) | Submenu de consultas (7 opções: agendar, cancelar, marcar realizada, agenda do dia, prontuário, agenda do médico, diagnóstico/prescrição) |
+| `ConsoleHelper` | [App/UI/TextUI/Shared/ConsoleHelper.cs](App/UI/TextUI/Shared/ConsoleHelper.cs) | Utilitários: `Titulo`, `Ler`, `LerInt`, `Sucesso`, `Erro`, `Aviso`, `Pausar` |
 
 **Estrutura de menus:**
 
@@ -292,29 +431,34 @@ Menu Principal
 │   ├── Listar todos
 │   └── Buscar por CPF
 └── 3. Consultas
-    ├── Agendar consulta
-    ├── Cancelar consulta
-    ├── Marcar como realizada
-    ├── Agenda do dia
-    ├── Histórico do paciente
-    └── Agenda do médico
+    ├── 1. Agendar consulta (com filtro por especialidade)
+    ├── 2. Cancelar consulta
+    ├── 3. Marcar como realizada
+    ├── 4. Consultas do dia
+    ├── 5. Prontuário do paciente
+    ├── 6. Agenda de um médico
+    └── 7. Registrar diagnóstico/prescrição
 ```
 
 **Tratamento de erros na UI:**
 
-Cada operação é envolta em `try/catch`. Erros de negócio (`LimiteConsultasDiariasException`, `ConsultaConflitanteException`, `ArgumentException`) exibem mensagens amigáveis em vermelho. Isso separa claramente a **detecção** do erro (no Service) da **apresentação** do erro (na UI).
+Cada operação é envolta em `try/catch`. Erros de negócio (`LimiteConsultasDiariasException`, `ConsultaConflitanteException`, `ArgumentException`, `KeyNotFoundException`) exibem mensagens amigáveis via `ConsoleHelper.Erro()`. Isso separa a **detecção** do erro (no Service ou nos Models) da **apresentação** (na UI).
 
 **Por que a UI não valida regras de negócio?**
 
-Para garantir que as regras sejam verificadas independentemente de quem chame o serviço. Se no futuro uma interface gráfica ou uma API chamar `AgendamentoService.Agendar()`, as mesmas regras serão aplicadas — porque elas vivem no Service, não na UI.
+Para garantir que as regras sejam verificadas independentemente de quem chame o serviço. Quando a interface gráfica for implementada, ela chamará os mesmos serviços e as mesmas regras serão aplicadas automaticamente.
+
+**Filtro por especialidade no agendamento:**
+
+Ao agendar uma consulta, o sistema pergunta pela especialidade antes de listar os médicos. Se o campo for deixado em branco, lista todos. Isso é implementado em `ConsultasMenu.ListarMedicosInline(string?)`, que delega para `IMedicoRepositorio.BuscarPorEspecialidade()` quando um filtro é informado.
 
 ---
 
 ## 8. Tratamento de Exceções
 
 **Arquivos:**
-- [ClinicaMedica/Exceptions/ConsultaConflitanteException.cs](ClinicaMedica/Exceptions/ConsultaConflitanteException.cs)
-- [ClinicaMedica/Exceptions/LimiteConsultasDiariasException.cs](ClinicaMedica/Exceptions/LimiteConsultasDiariasException.cs)
+- [App/Backend/Consultas/Exceptions/ConsultaConflitanteException.cs](App/Backend/Consultas/Exceptions/ConsultaConflitanteException.cs)
+- [App/Backend/Consultas/Exceptions/LimiteConsultasDiariasException.cs](App/Backend/Consultas/Exceptions/LimiteConsultasDiariasException.cs)
 
 O sistema define duas exceções customizadas, ambas herdando de `Exception`:
 
@@ -323,31 +467,55 @@ O sistema define duas exceções customizadas, ambas herdando de `Exception`:
 | `ConsultaConflitanteException` | Paciente já tem consulta com o mesmo médico no mesmo dia |
 | `LimiteConsultasDiariasException` | Médico já tem 10 consultas ativas no dia solicitado |
 
+Exceções do .NET também são usadas com semântica precisa:
+
+| Exceção | Onde |
+|---|---|
+| `KeyNotFoundException` | Repositórios e AgendamentoService: entidade não encontrada por Id |
+| `InvalidOperationException` | Repositórios: CPF/CRM duplicado; Consulta: transição de estado inválida |
+| `ArgumentException` | Models: valor inválido em setter (CPF, nome, data de nascimento, diagnóstico) |
+
 **Por que criar exceções customizadas?**
 
-Exceções customizadas permitem que o código chamador trate cada tipo de erro de forma diferente, usando `catch` tipado. Além disso, o nome da exceção documenta o tipo de problema — `LimiteConsultasDiariasException` é autoexplicativa. Usar `Exception("limite atingido")` seria menos expressivo e menos robusto.
-
-Isso atende diretamente ao requisito do trabalho de **inclusão de validações e tratamento de exceções**.
+Exceções customizadas permitem que o código chamador trate cada tipo de erro de forma diferente via `catch` tipado. `LimiteConsultasDiariasException` é autoexplicativa e exibe uma mensagem diferente de `ConsultaConflitanteException`. Usar `Exception("limite atingido")` seria menos expressivo e impossibilitaria tratamento diferenciado.
 
 ---
 
-## 9. Persistência em JSON
+## 9. Persistência de Dados
 
-Os dados são salvos em três arquivos no mesmo diretório do `Program.cs`, versionados junto ao código-fonte para facilitar revisão e testes:
+O sistema suporta dois modos de persistência, selecionáveis em `Program.cs` sem alterar nenhuma outra classe.
+
+### 9.1 SQLite (modo padrão)
+
+O banco de dados é um arquivo `clinica.db` criado em `App/Database/Sqlite/`. Quatro tabelas:
+
+```sql
+Medicos     (Id, Nome, Cpf, Telefone, Crm, Especialidade)
+Pacientes   (Id, Nome, Cpf, Telefone, DataNascimento, Convenio)
+Consultas   (Id, MedicoId, PacienteId, DataHora, Status, Observacoes, Diagnostico)
+Prescricoes (Id, ConsultaId, Medicamento, Dosagem, Instrucoes)
+```
+
+`Prescricoes` tem `ON DELETE CASCADE` em `ConsultaId`, garantindo que ao remover uma consulta suas prescrições sejam removidas automaticamente pelo banco.
+
+Todas as queries usam **parâmetros nomeados** (ex.: `@nome`, `@cpf`), prevenindo SQL Injection.
+
+### 9.2 JSON (modo alternativo)
+
+Os dados são salvos em três arquivos no diretório `App/Database/Json/`:
 
 ```
-ClinicaMedica/
-├── Program.cs
+App/Database/Json/
 ├── medicos.json
 ├── pacientes.json
 └── consultas.json
 ```
 
-O caminho é resolvido em tempo de compilação via `[CallerFilePath]`, garantindo que os arquivos sempre sejam criados ao lado do código-fonte independente de onde o executável é rodado:
+O caminho base é resolvido em `Program.cs` via `[CallerFilePath]`, garantindo que os arquivos sempre sejam criados ao lado do código-fonte independente de onde o executável é rodado:
 
 ```csharp
-static string GetSourceDir([CallerFilePath] string path = "") => path;
-var dataDir = Path.GetDirectoryName(GetSourceDir())!;
+static string GetSourceDir([CallerFilePath] string p = "") => p;
+var baseDir = Path.GetDirectoryName(GetSourceDir())!;
 ```
 
 **Exemplo de `medicos.json`:**
@@ -365,15 +533,21 @@ var dataDir = Path.GetDirectoryName(GetSourceDir())!;
 ]
 ```
 
-**Estratégia de carregamento:**
+### 9.3 Troca entre modos
 
-No construtor do `RepositorioJson`, o arquivo é lido e deserializado. Se o arquivo não existir (primeira execução) ou estiver corrompido, a lista começa vazia — sem crash. Isso é tratado explicitamente com `try/catch` no método `Carregar()`.
+Para trocar de SQLite para JSON, basta comentar o bloco SQLite e descomentar o bloco JSON em `Program.cs`. Nenhuma outra classe precisa ser alterada:
 
-**Por que JSON e não XML ou TXT?**
+```csharp
+// Modo SQLite (padrão):
+IMedicoRepositorio   medicoRepo   = new MedicoRepositorioSql(banco);
+IPacienteRepositorio pacienteRepo = new PacienteRepositorioSql(banco);
+IConsultaRepositorio consultaRepo = new ConsultaRepositorioSql(banco);
 
-O trabalho permite os três formatos. JSON foi escolhido por ser mais compacto que XML, nativamente suportado por `System.Text.Json` (sem dependência externa), e legível por humanos. A estrutura hierárquica do JSON mapeia naturalmente para os objetos C#.
-
-A especificação também prevê **evolução para banco de dados** — a arquitetura facilita isso: basta criar `MedicoRepositorioBD : IRepositorio<Medico>` implementando o mesmo contrato, sem alterar nada nas camadas acima.
+// Modo JSON (alternativo):
+// IMedicoRepositorio   medicoRepo   = new MedicoRepositorio(Path.Combine(jsonDir, "medicos.json"));
+// IPacienteRepositorio pacienteRepo = new PacienteRepositorio(Path.Combine(jsonDir, "pacientes.json"));
+// IConsultaRepositorio consultaRepo = new ConsultaRepositorio(Path.Combine(jsonDir, "consultas.json"));
+```
 
 ---
 
@@ -386,8 +560,9 @@ A abstração consiste em modelar apenas o que é relevante para o domínio, ign
 **Onde aparece:**
 
 - **`Pessoa`** é uma abstração das características comuns de médicos e pacientes. Ela não existe como entidade concreta no sistema — é um molde.
-- **`IRepositorio<T>`** é uma abstração da ideia de "armazenamento de dados". A interface define _o que_ pode ser feito com um repositório, sem dizer _como_ é feito.
-- **`RepositorioJson<T>`** é uma abstração intermediária: define o comportamento de persistência em JSON, mas deixa os detalhes de cada entidade (como gerar Id, como validar unicidade) para as subclasses.
+- **`IRepositorio<T>`** é uma abstração da ideia de "armazenamento de dados". A interface define _o que_ pode ser feito com um repositório, sem dizer _como_ é feito — nem se os dados estão em JSON ou SQLite.
+- **`RepositorioJson<T>`** é uma abstração intermediária: define o comportamento de persistência em JSON, mas deixa os detalhes de cada entidade para as subclasses.
+- **`RepositorioBD<T>`** é a abstração equivalente para SQLite.
 
 **Por que isso importa:**
 
@@ -401,10 +576,11 @@ O encapsulamento protege o estado interno dos objetos, expondo apenas o necessá
 
 **Onde aparece:**
 
-- **Properties com validação em `Pessoa`**: `Nome` e `Cpf` têm setters que lançam `ArgumentException` se valores inválidos forem atribuídos. O objeto nunca entra em estado inválido.
-- **`Idade` em `Paciente`**: property computada com getter apenas — não pode ser definida externamente, pois é calculada automaticamente.
-- **`Status` em `Consulta`**: não tem setter público. O status só muda por meio dos métodos `Cancelar()` e `MarcarRealizada()`, que validam a transição. Isso impede que código externo coloque a consulta em um estado ilegal.
-- **`_itens` em `RepositorioJson`**: a lista interna é privada. O acesso externo é feito apenas por `ListarTodos()`, que retorna `IReadOnlyList<T>` — uma visão somente leitura. Isso impede que código fora do repositório modifique a coleção diretamente.
+- **Properties com validação em `Pessoa`**: `Nome` e `Cpf` têm setters que lançam `ArgumentException` se valores inválidos forem atribuídos. O CPF passa pelo algoritmo dos dois dígitos verificadores — o objeto nunca aceita um CPF matematicamente inválido.
+- **`Idade` em `Paciente`**: property computada com getter apenas — não pode ser definida externamente. Calculada em tempo real a partir de `DataNascimento`.
+- **Backing fields em `Consulta`**: `_status`, `_diagnostico` e `_prescricoes` são campos privados. As propriedades correspondentes são somente leitura (`Status => _status`, `Diagnostico => _diagnostico`, `Prescricoes => _prescricoes`). O único acesso de escrita é pelos métodos `Cancelar()`, `MarcarRealizada()`, `RegistrarDiagnostico()` e `AdicionarPrescricao()` — que validam a operação antes de executar. Código externo não consegue contornar essas validações.
+- **`IReadOnlyList<Prescricao>` em `Consulta.Prescricoes`**: expõe a lista de prescrições como somente leitura. O consumidor pode iterar, mas não pode chamar `.Add()` ou `.Remove()` diretamente — essas operações só passam pelo método `AdicionarPrescricao()`.
+- **`_dados` em `RepositorioJson`**: a lista interna é `protected` — acessível pelas subclasses, mas não por quem usa o repositório. `ListarTodos()` retorna `_dados.AsReadOnly()`, impedindo modificações externas na coleção.
 
 ---
 
@@ -416,23 +592,35 @@ A herança permite que subclasses reutilizem e especializem comportamentos da su
 
 ```
 Pessoa (abstract)
-├── Medico       → adiciona CRM, Especialidade, sobrescreve ExibirInformacoes()
-└── Paciente     → adiciona DataNascimento, Convenio, Idade, sobrescreve ExibirInformacoes()
+├── Medico   → adiciona Crm, Especialidade; sobrescreve ExibirInformacoes()
+└── Paciente → adiciona DataNascimento, Convenio, Idade; sobrescreve ExibirInformacoes()
 ```
 
-**Hierarquia de Repositórios:**
+**Hierarquia de Repositórios JSON:**
 
 ```
 IRepositorio<T> (interface)
-└── RepositorioJson<T> (abstract) → implementa persistência JSON
-    ├── MedicoRepositorio    → especializa Adicionar(), adiciona BuscarPorCrm/Especialidade
-    ├── PacienteRepositorio  → especializa Adicionar(), adiciona BuscarPorCpf
-    └── ConsultaRepositorio  → especializa Adicionar(), adiciona métodos de busca por filtros
+└── RepositorioJson<T> (abstract) → implementa persistência em JSON
+    ├── MedicoRepositorio    → implementa IMedicoRepositorio; especializa Adicionar()
+    ├── PacienteRepositorio  → implementa IPacienteRepositorio; especializa Adicionar()
+    └── ConsultaRepositorio  → implementa IConsultaRepositorio; especializa Adicionar()
+```
+
+**Hierarquia de Repositórios SQLite:**
+
+```
+IRepositorio<T> (interface)
+└── RepositorioBD<T> (abstract) → gerencia ConexaoBanco; Salvar() é no-op
+    ├── MedicoRepositorioSql    → implementa IMedicoRepositorio com SQL
+    ├── PacienteRepositorioSql  → implementa IPacienteRepositorio com SQL
+    └── ConsultaRepositorioSql  → implementa IConsultaRepositorio com SQL
 ```
 
 **O que cada subclasse herda e o que especializa:**
 
-`MedicoRepositorio`, `PacienteRepositorio` e `ConsultaRepositorio` herdam de `RepositorioJson<T>` toda a lógica de leitura/escrita de JSON, a manutenção da lista em memória e os métodos básicos de CRUD. Cada um sobrescreve apenas `Adicionar()` para implementar a geração de Id e as validações específicas do tipo.
+Os repositórios JSON herdam de `RepositorioJson<T>` toda a lógica de leitura/escrita de JSON, a manutenção da lista em memória e os métodos `ListarTodos()` e `Salvar()`. Cada um sobrescreve apenas `Adicionar()`, `BuscarPorId()`, `Atualizar()` e `Remover()`.
+
+Os repositórios SQLite herdam de `RepositorioBD<T>` a referência ao `ConexaoBanco` e o helper `ObterUltimoId()`. Implementam todos os cinco métodos abstratos via SQL.
 
 ---
 
@@ -446,19 +634,19 @@ O polimorfismo permite que objetos de tipos diferentes respondam de forma espec�
 Pessoa p1 = new Medico { Nome = "Dr. Ana", Crm = "MG-001", Especialidade = "Neurologia" };
 Pessoa p2 = new Paciente { Nome = "Carlos", DataNascimento = new DateTime(1990, 5, 10) };
 
-p1.ExibirInformacoes(); // exibe CRM e especialidade
-p2.ExibirInformacoes(); // exibe data de nascimento e convênio
+p1.ExibirInformacoes(); // "Dr(a). Dr. Ana | CRM: MG-001 | Neurologia | Tel: ..."
+p2.ExibirInformacoes(); // "Carlos | 35 anos | Convênio: Particular | Tel: ..."
 ```
 
-A chamada é feita na referência `Pessoa`, mas o comportamento executado é o da subclasse concreta. Isso permite que a UI itere sobre uma lista de `Pessoa` e chame `ExibirInformacoes()` sem `if (p is Medico)`.
+A chamada é feita na referência `Pessoa`, mas o comportamento executado é o da subclasse concreta. Isso permite que a UI itere sobre qualquer lista de pessoas e chame `ExibirInformacoes()` sem `if (p is Medico)`.
 
-**Polimorfismo com `IRepositorio<T>`:**
+**Polimorfismo com interfaces de repositório:**
 
-A interface define o contrato. O `AgendamentoService` poderia receber `IRepositorio<Medico>` e funcionar igualmente com `MedicoRepositorioJson`, `MedicoRepositorioXml` ou `MedicoRepositorioBD` — sem mudar uma linha do Service.
+`AgendamentoService` recebe `IMedicoRepositorio`, `IPacienteRepositorio` e `IConsultaRepositorio`. Em produção, as implementações são SQLite (`MedicoRepositorioSql`, etc.). Se o `Program.cs` for alterado para JSON, o serviço recebe `MedicoRepositorio` — e funciona exatamente da mesma forma, sem mudar uma linha do `AgendamentoService`.
 
-**Polimorfismo com `Consulta`:**
+**Polimorfismo com `Consulta` (via estado):**
 
-Os métodos `Cancelar()` e `MarcarRealizada()` têm comportamento polimórfico implícito via estado: a mesma chamada `consulta.Cancelar()` valida e executa a transição de forma diferente dependendo do status atual da consulta.
+O método `Cancelar()` tem comportamento diferente dependendo do `_status` atual da consulta. A mesma chamada `consulta.Cancelar()` lança exceção se o status for `Realizada` ou `Cancelada`, e muda o status para `Cancelada` se for `Agendada`. O comportamento correto é selecionado em tempo de execução com base no estado do objeto.
 
 ---
 
@@ -468,38 +656,37 @@ Os métodos `Cancelar()` e `MarcarRealizada()` têm comportamento polimórfico i
 
 | Requisito | Implementação |
 |---|---|
-| Cadastro de médicos e pacientes | `MedicoRepositorio.Adicionar()`, `PacienteRepositorio.Adicionar()` |
+| Cadastro de médicos | `MedicoRepositorio.Adicionar()` / `MedicoRepositorioSql.Adicionar()` |
+| Cadastro de pacientes | `PacienteRepositorio.Adicionar()` / `PacienteRepositorioSql.Adicionar()` |
 | Agendamento de consultas | `AgendamentoService.Agendar()` |
 | Cancelamento de consultas | `AgendamentoService.Cancelar()` |
-| Validação de horários | Verificação de `DataHora < DateTime.Now` em `Agendar()` |
+| Validação de horários | Setter `Consulta.DataHora` + validações em `Agendar()` |
 | Listagem por médico | `AgendamentoService.ListarPorMedico()` |
 | Histórico por paciente | `AgendamentoService.ListarPorPaciente()` |
+| Listagem diária | `AgendamentoService.ListarPorData()` |
+| Diagnóstico e prescrições | `AgendamentoService.RegistrarDiagnostico()` + `AgendamentoService.AdicionarPrescricao()` |
+| Filtro por especialidade | `IMedicoRepositorio.BuscarPorEspecialidade()` + `ConsultasMenu.ListarMedicosInline(string?)` |
 
 ### Regras de Negócio
 
 | Regra | Onde é verificada |
 |---|---|
-| Um paciente por médico/dia | `ConsultaRepositorio.PacienteTemConsultaComMedicoNoDia()` → lança `ConsultaConflitanteException` |
-| Máximo 10 consultas por médico/dia | `ConsultaRepositorio.ContarConsultasAtivasMedicoNoDia()` → lança `LimiteConsultasDiariasException` |
-| Consultas não podem ser no passado | Validação em `AgendamentoService.Agendar()` |
+| Um paciente por médico/dia | `IConsultaRepositorio.PacienteTemConsultaComMedicoNoDia()` → lança `ConsultaConflitanteException` |
+| Máximo 10 consultas por médico/dia | `IConsultaRepositorio.ContarConsultasAtivasMedicoNoDia()` → lança `LimiteConsultasDiariasException` |
+| Consultas não podem ser no passado | Setter `Consulta.DataHora` (lança `ArgumentException`) |
+| Não cancelar consulta realizada | `Consulta.Cancelar()` (lança `InvalidOperationException`) |
+| Diagnóstico apenas em consulta realizada | `Consulta.RegistrarDiagnostico()` (lança `InvalidOperationException`) |
 
 ### Requisitos Adicionais do Trabalho
 
 | Requisito | Status |
 |---|---|
-| Menu interativo no console | Implementado em `MenuConsole.cs` |
-| Armazenamento em JSON | Implementado em `RepositorioJson<T>` |
-| Validações e tratamento de exceções | Exceções customizadas + validações em models e services |
-| Aplicação dos quatro pilares da POO | Abstração, Encapsulamento, Herança e Polimorfismo aplicados concretamente |
-| README.md com instruções | Presente em `README.md` |
-
-### Extensões já preparadas pela arquitetura
-
-O trabalho menciona como extensões possíveis: filtro por especialidade, listagem diária e histórico. Todos estão implementados:
-
-- `MedicoRepositorio.BuscarPorEspecialidade()` — filtro por especialidade
-- `AgendamentoService.ListarPorData()` — agenda do dia
-- `AgendamentoService.ListarPorPaciente()` — histórico do paciente
+| Menu interativo no console | `MenuConsole` + 3 submenus + `ConsoleHelper` |
+| Armazenamento em JSON | `RepositorioJson<T>` + 3 repositórios JSON |
+| Banco de dados | SQLite ativo por padrão: `RepositorioBD<T>` + `ConexaoBanco` + `InicializadorBanco` + 3 repositórios SQL |
+| Validações e tratamento de exceções | Exceções customizadas + validações nos models e no service |
+| Quatro pilares da POO | Abstração, Encapsulamento, Herança e Polimorfismo aplicados concretamente |
+| README.md com instruções | Presente |
 
 ---
 
@@ -508,64 +695,94 @@ O trabalho menciona como extensões possíveis: filtro por especialidade, listag
 ### Exemplo: Agendamento de uma consulta
 
 ```
-Usuário digita: médico Id=1, paciente Id=2, data 2026-06-10 14:00
+Usuário informa: especialidade "Cardiologia", médico ID=1, paciente ID=2, data 2026-06-10 14:00
         │
         ▼
-MenuConsole.AgendarConsulta()
-  → coleta MedicoId, PacienteId, DataHora do Console.ReadLine()
-  → chama AgendamentoService.Agendar(1, 2, dataHora)
+ConsultasMenu.AgendarConsulta()
+  → exibe médicos filtrados por especialidade (IMedicoRepositorio.BuscarPorEspecialidade)
+  → coleta MedicoId, PacienteId, DataHora, Observacoes
+  → chama AgendamentoService.Agendar(1, 2, dataHora, obs)
         │
         ▼
 AgendamentoService.Agendar()
-  → MedicoRepositorio.BuscarPorId(1)          → OK: médico existe
-  → PacienteRepositorio.BuscarPorId(2)        → OK: paciente existe
-  → DataHora > DateTime.Now                   → OK: não é no passado
-  → ConsultaRepositorio.ContarConsultasAtivas(1, 2026-06-10) → retorna 3 (< 10, OK)
-  → ConsultaRepositorio.PacienteTemConsulta(2, 1, 2026-06-10) → retorna false (OK)
-  → cria new Consulta { MedicoId=1, PacienteId=2, DataHora=... }
-  → ConsultaRepositorio.Adicionar(consulta)
-  → ConsultaRepositorio.Salvar()   → escreve ClinicaMedica/consultas.json
+  → IMedicoRepositorio.BuscarPorId(1)                           → OK: médico existe
+  → IPacienteRepositorio.BuscarPorId(2)                         → OK: paciente existe
+  → IConsultaRepositorio.ContarConsultasAtivas(1, 2026-06-10)   → retorna 3 (< 10, OK)
+  → IConsultaRepositorio.PacienteTemConsulta(1, 2, 2026-06-10)  → retorna false (OK)
+  → new Consulta(0, 1, 2, dataHora, obs)                        → setter DataHora valida: não é passado
+  → IConsultaRepositorio.Adicionar(consulta)                    → persiste (SQLite ou JSON)
         │
         ▼
-MenuConsole exibe: "Consulta agendada com sucesso! ID: 4"
+ConsultasMenu exibe: "Consulta agendada com sucesso! ID: #0001"
+```
+
+### Exemplo: Registro de diagnóstico
+
+```
+Usuário informa: ID da consulta = 1, diagnóstico = "Hipertensão"
+        │
+        ▼
+ConsultasMenu.RegistrarDiagnosticoPrescricao()
+  → AgendamentoService.RegistrarDiagnostico(1, "Hipertensão")
+        │
+        ▼
+AgendamentoService.RegistrarDiagnostico()
+  → IConsultaRepositorio.BuscarPorId(1)             → retorna Consulta{Status=Realizada}
+  → consulta.RegistrarDiagnostico("Hipertensão")    → valida Status == Realizada, define _diagnostico
+  → IConsultaRepositorio.Atualizar(consulta)         → persiste
+        │
+        ▼
+ConsultasMenu exibe: "Prontuário atualizado."
 ```
 
 ### Exemplo: Falha por limite diário
 
 ```
 AgendamentoService.Agendar()
-  → ConsultaRepositorio.ContarConsultasAtivas(1, 2026-06-10) → retorna 10
-  → throw LimiteConsultasDiariasException("Médico atingiu o limite de 10 consultas")
+  → IConsultaRepositorio.ContarConsultasAtivas(1, 2026-06-10) → retorna 10
+  → throw LimiteConsultasDiariasException(medicoId, data)
         │
         ▼
-MenuConsole.catch(LimiteConsultasDiariasException e)
-  → Console.WriteLine em vermelho: "Limite diário atingido: ..."
+ConsultasMenu.catch(LimiteConsultasDiariasException ex)
+  → ConsoleHelper.Erro(ex.Message) → exibe em vermelho: "Médico atingiu o limite de 10 consultas..."
 ```
 
 ---
 
 ## 13. Decisões de Design e Justificativas
 
-### Por que `IReadOnlyList<T>` em `ListarTodos()`?
+### Por que `IReadOnlyList<T>` em `Consulta.Prescricoes`?
 
-Retornar `List<T>` diretamente permitiria que código externo modificasse a coleção interna sem passar pelo repositório (ex.: `repo.ListarTodos().Add(x)` sem chamar `Salvar()`). `IReadOnlyList<T>` expõe apenas operações de leitura, protegendo a integridade do estado.
+Retornar `List<T>` diretamente permitiria que código externo chamasse `.Add()` na lista sem passar pelo método `AdicionarPrescricao()`, contornando a validação de status. `IReadOnlyList<T>` expõe apenas operações de leitura. Internamente, `_prescricoes` continua sendo um `List<T>` mutável — somente os métodos da classe o modificam.
+
+### Por que `[JsonConstructor]` em `Consulta`?
+
+O setter de `DataHora` valida que a data não está no passado — comportamento correto ao criar uma nova consulta. Mas ao deserializar dados salvos, a data pode ser histórica. O `[JsonConstructor]` instrui o deserializador a usar o construtor de hidratação, que define `_dataHora` diretamente no backing field, ignorando a validação. Sem isso, o sistema crasha ao carregar qualquer consulta com data passada.
+
+### Por que `internal` em `DefinirPrescricoes()`?
+
+O repositório SQLite carrega prescrições de uma tabela separada após hidratar o objeto `Consulta`. Precisa de um ponto de entrada para injetar essas prescrições. `public` exporia o método para qualquer código, quebrando o encapsulamento. `private` impediria o acesso dos repositórios. `internal` é o equilíbrio: acessível apenas dentro do assembly (o mesmo projeto), inacessível externamente.
 
 ### Por que o Id é gerado no repositório e não no model?
 
-Porque a geração de Id depende de contexto (o maior Id existente na coleção). O model `Medico` não tem acesso à lista de médicos — seria uma violação de responsabilidade. O repositório tem esse contexto e é o lugar correto.
+Porque a geração de Id depende de contexto (o maior Id existente na coleção, ou o `last_insert_rowid()` do banco). O model `Medico` não tem acesso à lista de médicos — seria uma violação de responsabilidade. O repositório tem esse contexto e é o lugar correto.
 
 ### Por que `AgendamentoService` recebe repositórios no construtor?
 
-Isso é **injeção de dependência**: o serviço declara o que precisa, e quem o cria (`Program.cs`) fornece as implementações concretas. Isso facilita testes (seria possível injetar repositórios em memória) e a futura substituição de implementações.
+Isso é **injeção de dependência**: o serviço declara o que precisa, e quem o cria (`Program.cs`) fornece as implementações concretas. Facilita testes (seria possível injetar repositórios em memória) e permite trocar a camada de persistência sem alterar o serviço.
 
 ### Por que separar `ConsultaRepositorio` e `AgendamentoService`?
 
-O repositório sabe **como acessar dados**. O serviço sabe **quais regras de negócio aplicar**. Misturar os dois criaria uma classe com dois motivos para mudar: mudança na persistência e mudança nas regras de negócio. Mantê-los separados torna o sistema mais previsível e fácil de evoluir.
+O repositório sabe **como acessar dados**. O serviço sabe **quais regras de negócio aplicar**. Misturar os dois criaria uma classe com dois motivos para mudar. Mantê-los separados torna o sistema previsível e fácil de evoluir.
 
-### Por que o método `Cancelar()` está em `Consulta` e a validação de existência está em `AgendamentoService`?
+### Por que `Cancelar()` está em `Consulta` e a validação de existência está em `AgendamentoService`?
 
 `Consulta.Cancelar()` valida a transição de estado (não cancelar o que já foi realizado) — é um comportamento intrínseco do objeto. `AgendamentoService.Cancelar()` valida que a consulta existe — é uma operação que envolve o repositório. Cada responsabilidade está no lugar certo.
 
+### Por que usar SQLite e manter JSON como fallback?
+
+SQLite oferece integridade referencial (chaves estrangeiras com `ON DELETE CASCADE`), ausência de conflitos em escritas concorrentes e queries mais expressivas. JSON é mantido como fallback por ser transparente para depuração e por demonstrar que a arquitetura de repositórios é genuinamente intercambiável.
+
 ---
 
-*Documentação gerada em 25/05/2026 — Sistema de Clínica Médica, PUC Minas Betim.*
+*Documentação atualizada em 25/05/2026 — Sistema de Clínica Médica, PUC Minas Betim.*

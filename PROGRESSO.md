@@ -2,7 +2,7 @@
 
 **Disciplina:** Programação Orientada por Objetos — PUC Minas Betim  
 **Entrega final:** 26/06/2026 | **Apresentação:** 26/06/2026  
-**Última atualização:** 25/05/2026 (rev. 2)
+**Última atualização:** 25/05/2026 (rev. 4)
 
 ---
 
@@ -32,8 +32,8 @@
 
 ### Concluído (adicionado em 25/05/2026)
 
-- [x] **Filtro por especialidade na tela de agendamento** — Ao agendar, o sistema pergunta por especialidade antes de listar os médicos; se deixado em branco, lista todos (`MenuConsole.AgendarConsulta` + `ListarMedicosInline(string?)`)
-- [x] **Prontuário / diagnóstico e prescrições** — Modelo `Prescricao` criado; `Consulta` ganhou `Diagnostico` e `List<Prescricao>` com métodos `RegistrarDiagnostico` e `AdicionarPrescricao`; `AgendamentoService` expõe os novos métodos; UI oferece registro imediato ao marcar consulta como realizada e opção dedicada no menu (opção 7); prontuário detalhado exibido no histórico do paciente (opção 5)
+- [x] **Filtro por especialidade na tela de agendamento** — Ao agendar, o sistema pergunta por especialidade antes de listar os médicos; se deixado em branco, lista todos (`ConsultasMenu.AgendarConsulta` + `ListarMedicosInline(string?)`)
+- [x] **Prontuário / diagnóstico e prescrições** — Modelo `Prescricao` criado; `Consulta` ganhou `Diagnostico` (somente leitura, alterado via `RegistrarDiagnostico`) e `Prescricoes` (`IReadOnlyList<Prescricao>`, populada via `AdicionarPrescricao`); `AgendamentoService` expõe os novos métodos; UI oferece registro imediato ao marcar consulta como realizada e opção dedicada no menu (opção 7); prontuário detalhado exibido no histórico do paciente (opção 5)
 
 ---
 
@@ -42,7 +42,7 @@
 ### Concluído
 
 - [x] **Abstração** — `Pessoa` (classe abstrata com `ExibirInformacoes()` abstrato) e `IRepositorio<T>` (interface genérica de persistência) + `RepositorioJson<T>` (classe abstrata que implementa a interface)
-- [x] **Encapsulamento** — Campos privados com setters validados em `Pessoa` (`_nome`, `_cpf`), `Medico` (`_crm`, `_especialidade`), `Paciente` (`_dataNascimento`) e `Consulta` (`_dataHora`); regras de negócio centralizadas em `AgendamentoService`
+- [x] **Encapsulamento** — Campos privados com setters validados em `Pessoa` (`_nome`, `_cpf`), `Medico` (`_crm`, `_especialidade`), `Paciente` (`_dataNascimento`) e `Consulta` (`_dataHora`); em `Consulta`, `_status`, `_diagnostico` e `_prescricoes` são backing fields privados — `Status` e `Diagnostico` são propriedades somente leitura (`=> _campo`), `Prescricoes` é exposta como `IReadOnlyList<Prescricao>`, tornando impossível alterar o estado sem passar pelos métodos validados (`Cancelar`, `MarcarRealizada`, `RegistrarDiagnostico`, `AdicionarPrescricao`); validação de CPF inclui cálculo dos dois dígitos verificadores e rejeição de sequências repetidas; regras de negócio centralizadas em `AgendamentoService`
 - [x] **Herança** — `Medico` e `Paciente` herdam de `Pessoa`; `MedicoRepositorio`, `PacienteRepositorio` e `ConsultaRepositorio` herdam de `RepositorioJson<T>`
 - [x] **Polimorfismo** — `ExibirInformacoes()` com comportamento distinto em `Medico` e `Paciente`; repositórios concretos sobrescrevem os métodos abstratos de `RepositorioJson<T>`
 
@@ -52,10 +52,10 @@
 
 ### Concluído
 
-- [x] **Menu interativo no console** — Menu hierárquico completo (Médicos / Pacientes / Consultas) com submenus e navegação em loop (`MenuConsole.cs`)
+- [x] **Menu interativo no console** — Menu hierárquico completo com classe raiz (`MenuConsole.cs`) e três submenus especializados (`MedicosMenu.cs`, `PacientesMenu.cs`, `ConsultasMenu.cs`); utilitários centralizados em `ConsoleHelper.cs`; navegação em loop com `Console.Clear` em cada nível
 - [x] **Armazenamento de dados em JSON** — Persistência automática via `System.Text.Json`; três arquivos separados em `Database/Json/`
 - [x] **Banco de dados SQLite** — Implementação completa com `RepositorioBD<T>`, `ConexaoBanco`, `InicializadorBanco` e três repositórios SQL (`MedicoRepositorioSql`, `PacienteRepositorioSql`, `ConsultaRepositorioSql`) em `Database/Sqlite/`; o `Program.cs` usa SQLite por padrão com fallback JSON comentado
-- [x] **Validações e tratamento de exceções** — Exceções de domínio próprias (`ConsultaConflitanteException`, `LimiteConsultasDiariasException`); repositórios lançam `KeyNotFoundException` (registro não encontrado) e `InvalidOperationException` (CPF/CRM duplicado) tanto nas implementações JSON quanto SQLite; UI captura e exibe todas as exceções de forma amigável
+- [x] **Validações e tratamento de exceções** — Exceções de domínio próprias (`ConsultaConflitanteException`, `LimiteConsultasDiariasException`); repositórios lançam `KeyNotFoundException` (registro não encontrado) e `InvalidOperationException` (CPF/CRM duplicado) tanto nas implementações JSON quanto SQLite; CPF validado com algoritmo de dígitos verificadores (rejeita sequências como `000.000.000-00` e qualquer CPF com checksum inválido); UI captura e exibe todas as exceções de forma amigável
 - [x] **Padrões de projeto documentados** — Ver seção abaixo
 
 ### Pendente
@@ -180,10 +180,9 @@ RepositorioJson<T>
 |:----------:|--------|-----------|
 | 1 | Preencher nomes dos integrantes no README e na entrega parcial | Necessário antes de 31/05 |
 | 2 | Converter `ENTREGA_PARCIAL.md` em PDF e entregar no Canvas | Prazo: 31/05/2026 |
-| 3 | Definir tecnologia de interface gráfica (WinForms / WPF / MAUI) | Decisão que afeta todo o desenvolvimento seguinte |
-| 4 | Implementar interface gráfica | Requisito obrigatório do trabalho |
-| ~~5~~ | ~~Migração para banco de dados~~ | ~~Concluído: SQLite implementado~~ |
-| 5 | Documentação final em PDF (descrição, arquitetura, diagramas UML, padrões) | Entrega: 26/06/2026 |
+| 3 | Implementar interface gráfica | Branch `feature/implementacao-interface-grafica` criado; tecnologia a decidir (WinForms / WPF / MAUI) |
+| ~~4~~ | ~~Migração para banco de dados~~ | ~~Concluído: SQLite implementado~~ |
+| 4 | Documentação final em PDF (descrição, arquitetura, diagramas UML, padrões) | Entrega: 26/06/2026 |
 
 ---
 
