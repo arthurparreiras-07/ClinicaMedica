@@ -1,0 +1,28 @@
+# Build
+bin/
+obj/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Rider
+.idea/
+
+# VS Code
+.vscode/
+
+# Logs e temporários
+*.log
+*.tmp
+*.cache
+
+# Dados gerados em runtime
+ClinicaMedica/data/*.json
+
+# Publicações
+publish/
+out/
