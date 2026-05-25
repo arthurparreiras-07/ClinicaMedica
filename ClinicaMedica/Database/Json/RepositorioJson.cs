@@ -1,8 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using ClinicaMedica.Interfaces;
+using ClinicaMedica.Backend.Core.Repositories;
 
-namespace ClinicaMedica.Repositories;
+namespace ClinicaMedica.Database.Json;
 
 public abstract class RepositorioJson<T> : IRepositorio<T> where T : class
 {

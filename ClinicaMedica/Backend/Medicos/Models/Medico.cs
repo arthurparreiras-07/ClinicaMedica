@@ -1,4 +1,6 @@
-namespace ClinicaMedica.Models;
+using ClinicaMedica.Backend.Core.Models;
+
+namespace ClinicaMedica.Backend.Medicos.Models;
 
 public class Medico : Pessoa
 {

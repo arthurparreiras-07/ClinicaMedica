@@ -1,7 +1,8 @@
-using ClinicaMedica.Interfaces;
-using ClinicaMedica.Models;
+using ClinicaMedica.Backend.Consultas.Interfaces;
+using ClinicaMedica.Backend.Consultas.Models;
+using ClinicaMedica.Database.Json;
 
-namespace ClinicaMedica.Repositories;
+namespace ClinicaMedica.Backend.Consultas.Repositories;
 
 public class ConsultaRepositorio : RepositorioJson<Consulta>, IConsultaRepositorio
 {

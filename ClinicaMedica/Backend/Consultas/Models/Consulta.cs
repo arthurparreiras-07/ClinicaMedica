@@ -1,4 +1,4 @@
-namespace ClinicaMedica.Models;
+namespace ClinicaMedica.Backend.Consultas.Models;
 
 public enum StatusConsulta
 {

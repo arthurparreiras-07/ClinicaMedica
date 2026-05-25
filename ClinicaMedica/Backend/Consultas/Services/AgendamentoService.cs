@@ -1,8 +1,10 @@
-using ClinicaMedica.Exceptions;
-using ClinicaMedica.Interfaces;
-using ClinicaMedica.Models;
+using ClinicaMedica.Backend.Consultas.Exceptions;
+using ClinicaMedica.Backend.Consultas.Interfaces;
+using ClinicaMedica.Backend.Consultas.Models;
+using ClinicaMedica.Backend.Medicos.Interfaces;
+using ClinicaMedica.Backend.Pacientes.Interfaces;
 
-namespace ClinicaMedica.Services;
+namespace ClinicaMedica.Backend.Consultas.Services;
 
 public class AgendamentoService
 {

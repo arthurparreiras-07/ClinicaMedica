@@ -1,9 +1,9 @@
-using ClinicaMedica.Database;
-using ClinicaMedica.Interfaces;
-using ClinicaMedica.Models;
+using ClinicaMedica.Database.Sqlite;
+using ClinicaMedica.Backend.Medicos.Interfaces;
+using ClinicaMedica.Backend.Medicos.Models;
 using Microsoft.Data.Sqlite;
 
-namespace ClinicaMedica.Repositories;
+namespace ClinicaMedica.Backend.Medicos.Repositories;
 
 public class MedicoRepositorioSql : RepositorioBD<Medico>, IMedicoRepositorio
 {

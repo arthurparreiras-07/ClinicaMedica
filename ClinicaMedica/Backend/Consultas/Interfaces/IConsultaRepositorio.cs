@@ -1,6 +1,7 @@
-using ClinicaMedica.Models;
+using ClinicaMedica.Backend.Consultas.Models;
+using ClinicaMedica.Backend.Core.Repositories;
 
-namespace ClinicaMedica.Interfaces;
+namespace ClinicaMedica.Backend.Consultas.Interfaces;
 
 public interface IConsultaRepositorio : IRepositorio<Consulta>
 {

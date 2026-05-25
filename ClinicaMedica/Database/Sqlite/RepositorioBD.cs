@@ -1,8 +1,7 @@
-using ClinicaMedica.Database;
-using ClinicaMedica.Interfaces;
+using ClinicaMedica.Backend.Core.Repositories;
 using Microsoft.Data.Sqlite;
 
-namespace ClinicaMedica.Repositories;
+namespace ClinicaMedica.Database.Sqlite;
 
 public abstract class RepositorioBD<T> : IRepositorio<T>
 {

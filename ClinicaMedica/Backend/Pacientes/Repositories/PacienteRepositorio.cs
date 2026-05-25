@@ -1,7 +1,8 @@
-using ClinicaMedica.Interfaces;
-using ClinicaMedica.Models;
+using ClinicaMedica.Database.Json;
+using ClinicaMedica.Backend.Pacientes.Interfaces;
+using ClinicaMedica.Backend.Pacientes.Models;
 
-namespace ClinicaMedica.Repositories;
+namespace ClinicaMedica.Backend.Pacientes.Repositories;
 
 public class PacienteRepositorio : RepositorioJson<Paciente>, IPacienteRepositorio
 {

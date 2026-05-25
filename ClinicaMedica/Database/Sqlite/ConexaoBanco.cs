@@ -1,6 +1,6 @@
 using Microsoft.Data.Sqlite;
 
-namespace ClinicaMedica.Database;
+namespace ClinicaMedica.Database.Sqlite;
 
 public class ConexaoBanco
 {
