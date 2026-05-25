@@ -6,7 +6,7 @@ using ClinicaMedica.Backend.Medicos.Interfaces;
 using ClinicaMedica.Backend.Medicos.Repositories;
 using ClinicaMedica.Backend.Pacientes.Interfaces;
 using ClinicaMedica.Backend.Pacientes.Repositories;
-using ClinicaMedica.UI;
+using ClinicaMedica.UI.TextUI;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
