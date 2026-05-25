@@ -34,15 +34,22 @@ O sistema tem como objetivo gerenciar as operações de uma clínica médica, at
 |--------------------|------|-----------------|
 | `Pessoa` | Classe abstrata | Representa qualquer pessoa no sistema (atributos comuns: Id, Nome, CPF, Telefone) e define o contrato `ExibirInformacoes()` |
 | `Medico` | Classe concreta | Especialização de `Pessoa`; acrescenta CRM e Especialidade |
-| `Paciente` | Classe concreta | Especialização de `Pessoa`; acrescenta DataNascimento, Convênio e cálculo de Idade |
-| `Consulta` | Classe concreta | Associa um médico a um paciente em um horário; controla o ciclo de vida (Agendada → Realizada/Cancelada) |
-| `IRepositorio<T>` | Interface genérica | Define o contrato CRUD para qualquer entidade persistida |
-| `RepositorioJson<T>` | Classe abstrata | Implementa leitura e escrita em JSON; deixa métodos específicos para as subclasses |
-| `MedicoRepositorio` | Classe concreta | Repositório especializado para `Medico`; busca por CRM e especialidade |
-| `PacienteRepositorio` | Classe concreta | Repositório especializado para `Paciente` |
-| `ConsultaRepositorio` | Classe concreta | Repositório especializado para `Consulta`; inclui contagens e buscas por médico/paciente/data |
-| `AgendamentoService` | Classe de serviço | Centraliza as regras de negócio do agendamento (validações, limites, conflitos) |
-| `MenuConsole` | Classe de UI | Interface interativa no console; delega operações ao `AgendamentoService` e repositórios |
+| `Paciente` | Classe concreta | Especialização de `Pessoa`; acrescenta DataNascimento, Convênio e cálculo automático de Idade |
+| `Consulta` | Classe concreta | Associa um médico a um paciente em um horário; controla o ciclo de vida (Agendada → Realizada/Cancelada); armazena diagnóstico e prescrições |
+| `Prescricao` | Classe concreta | Representa uma prescrição médica vinculada a uma consulta realizada (medicamento, dosagem, instruções) |
+| `IRepositorio<T>` | Interface genérica | Define o contrato CRUD para qualquer entidade persistida (Adicionar, BuscarPorId, ListarTodos, Atualizar, Remover, Salvar) |
+| `IMedicoRepositorio` | Interface | Estende `IRepositorio<Medico>`; acrescenta `BuscarPorCrm` e `BuscarPorEspecialidade` |
+| `IPacienteRepositorio` | Interface | Estende `IRepositorio<Paciente>`; acrescenta `BuscarPorCpf` |
+| `IConsultaRepositorio` | Interface | Estende `IRepositorio<Consulta>`; acrescenta buscas por médico, paciente, data e verificações de conflito/limite |
+| `RepositorioJson<T>` | Classe abstrata | Implementa leitura e escrita em JSON; deixa os métodos específicos de entidade para as subclasses |
+| `MedicoRepositorio` | Classe concreta | Implementa `IMedicoRepositorio` sobre JSON; busca por CRM e especialidade |
+| `PacienteRepositorio` | Classe concreta | Implementa `IPacienteRepositorio` sobre JSON; busca por CPF |
+| `ConsultaRepositorio` | Classe concreta | Implementa `IConsultaRepositorio` sobre JSON; inclui contagem de consultas por dia e verificação de conflito |
+| `AgendamentoService` | Classe de serviço | Centraliza as regras de negócio (validações de limite, conflito, existência) e orquestra os repositórios |
+| `MenuConsole` | Classe de UI | Menu principal no console; delega para os submenus especializados |
+| `MedicosMenu` | Classe de UI | Submenu de cadastro, listagem e busca de médicos |
+| `PacientesMenu` | Classe de UI | Submenu de cadastro, listagem e busca de pacientes |
+| `ConsultasMenu` | Classe de UI | Submenu de agendamento, cancelamento, prontuário, agenda diária e prescrições |
 | `ConsultaConflitanteException` | Exceção | Lançada quando um paciente já tem consulta com o mesmo médico no dia |
 | `LimiteConsultasDiariasException` | Exceção | Lançada quando o médico atinge 10 consultas em um dia |
 
@@ -53,22 +60,29 @@ Pessoa (abstrata)
 ├── Medico          (herança)
 └── Paciente        (herança)
 
-Consulta ──────── Medico    (associação por MedicoId)
-         ──────── Paciente  (associação por PacienteId)
+Consulta ──────── Medico      (associação por MedicoId)
+         ──────── Paciente    (associação por PacienteId)
+         ──────── Prescricao  (composição: List<Prescricao>)
 
-IRepositorio<T> (interface)
+IRepositorio<T> (interface genérica)
 └── RepositorioJson<T> (abstrata, implementa IRepositorio<T>)
-    ├── MedicoRepositorio
-    ├── PacienteRepositorio
-    └── ConsultaRepositorio
+    ├── MedicoRepositorio    (implementa IMedicoRepositorio)
+    ├── PacienteRepositorio  (implementa IPacienteRepositorio)
+    └── ConsultaRepositorio  (implementa IConsultaRepositorio)
 
-AgendamentoService ──── ConsultaRepositorio
-                   ──── MedicoRepositorio
-                   ──── PacienteRepositorio
+IMedicoRepositorio   ──> IRepositorio<Medico>   (herança de interface)
+IPacienteRepositorio ──> IRepositorio<Paciente> (herança de interface)
+IConsultaRepositorio ──> IRepositorio<Consulta> (herança de interface)
 
-MenuConsole ──── AgendamentoService
-            ──── MedicoRepositorio
-            ──── PacienteRepositorio
+AgendamentoService ──── IConsultaRepositorio
+                   ──── IMedicoRepositorio
+                   ──── IPacienteRepositorio
+
+MenuConsole ──── MedicosMenu    ──── IMedicoRepositorio
+            ──── PacientesMenu  ──── IPacienteRepositorio
+            ──── ConsultasMenu  ──── AgendamentoService
+                                ──── IMedicoRepositorio
+                                ──── IPacienteRepositorio
 ```
 
 ---
@@ -110,7 +124,7 @@ Atributos sensíveis são privados e controlados por propriedades com validaçã
 - Em `Pessoa`: `_nome` e `_cpf` são campos privados. O setter de `Cpf` rejeita qualquer valor com menos de 11 dígitos ou com letras; o de `Nome` rejeita strings vazias.
 - Em `Paciente`: `_dataNascimento` é privado; o setter impede datas futuras ou anteriores a 1900.
 - Em `Medico`: `_crm` e `_especialidade` são privados; seus setters rejeitam valores em branco.
-- Em `Consulta`: `_dataHora` é privado; o setter impede agendamentos no passado.
+- Em `Consulta`: `_dataHora`, `_status`, `_diagnostico` e `_prescricoes` são campos privados. `Status` e `Diagnostico` são propriedades somente leitura (`=> _campo`); o único acesso de escrita é pelos próprios métodos da classe (`Cancelar`, `MarcarRealizada`, `RegistrarDiagnostico`, `AdicionarPrescricao`). Código externo não consegue contornar as validações de transição de estado.
 
 ```csharp
 public string Cpf
@@ -172,7 +186,7 @@ Pessoa p = obterPessoa(); // pode ser Medico ou Paciente
 Console.WriteLine(p.ExibirInformacoes()); // comportamento correto em ambos os casos
 ```
 
-O mesmo ocorre nos repositórios: o `AgendamentoService` recebe `IRepositorio<Medico>` e `IRepositorio<Paciente>`, podendo trocar a implementação de persistência (de JSON para banco de dados, por exemplo) sem alterar nenhuma regra de negócio.
+O mesmo ocorre nos repositórios: o `AgendamentoService` recebe `IMedicoRepositorio`, `IPacienteRepositorio` e `IConsultaRepositorio` via construtor. As implementações concretas (`MedicoRepositorio`, `PacienteRepositorio`, `ConsultaRepositorio`) sobrescrevem os métodos abstratos de `RepositorioJson<T>` com comportamentos específicos da entidade — mas o serviço não sabe (e não precisa saber) qual implementação está usando. Isso permitirá trocar JSON por banco de dados sem alterar nenhuma regra de negócio.
 
 ---
 

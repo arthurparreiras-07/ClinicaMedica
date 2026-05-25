@@ -144,16 +144,46 @@ RepositorioJson<T>
 
 ---
 
+### 4. Dependency Injection (Injeção de Dependências)
+
+**Onde:** `AgendamentoService`, `MenuConsole`, `MedicosMenu`, `PacientesMenu`, `ConsultasMenu`
+
+**O que é:** As dependências de uma classe são fornecidas por quem a cria (geralmente o ponto de entrada da aplicação), e não criadas internamente. A classe declara o que precisa via construtor, sem se preocupar com como obter suas dependências.
+
+**Como está aplicado:**
+- `AgendamentoService` recebe `IConsultaRepositorio`, `IMedicoRepositorio` e `IPacienteRepositorio` via construtor — nunca instancia repositórios internamente
+- `MenuConsole` recebe `AgendamentoService`, `IMedicoRepositorio` e `IPacienteRepositorio` via construtor
+- Trocar a implementação de persistência (de JSON para SQLite, por exemplo) exige mudar apenas o `Program.cs` — todo o restante do código permanece intacto
+
+**Benefício prático:** Testabilidade — qualquer repositório pode ser substituído por uma implementação em memória sem alterar serviços ou UI.
+
+---
+
+### 5. Composition Root (Raiz de Composição)
+
+**Onde:** `Program.cs`
+
+**O que é:** Existe exatamente um lugar na aplicação responsável por instanciar todos os objetos e conectar suas dependências. Fora desse ponto, nenhuma classe cria instâncias concretas de suas dependências.
+
+**Como está aplicado:**
+- `Program.cs` é o único local onde `ConexaoBanco`, `InicializadorBanco`, os três repositórios e o `AgendamentoService` são instanciados
+- Toda a escolha de implementação (JSON ou SQLite) está centralizada ali: basta descomentar um bloco e comentar outro para trocar a camada de persistência inteira
+- Nenhuma classe de serviço ou UI instancia um repositório diretamente
+
+**Benefício prático:** Se o grupo decidir migrar de SQLite para outro banco, a mudança é cirúrgica — apenas `Program.cs` precisa ser alterado.
+
+---
+
 ## Próximos Passos (sugestão de prioridade)
 
 | Prioridade | Tarefa | Observação |
 |:----------:|--------|-----------|
 | 1 | Preencher nomes dos integrantes no README e na entrega parcial | Necessário antes de 31/05 |
-| 2 | Entregar `ENTREGA_PARCIAL.md` convertido em PDF no Canvas | Prazo: 31/05/2026 |
+| 2 | Converter `ENTREGA_PARCIAL.md` em PDF e entregar no Canvas | Prazo: 31/05/2026 |
 | 3 | Definir tecnologia de interface gráfica (WinForms / WPF / MAUI) | Decisão que afeta todo o desenvolvimento seguinte |
 | 4 | Implementar interface gráfica | Requisito obrigatório do trabalho |
 | ~~5~~ | ~~Migração para banco de dados~~ | ~~Concluído: SQLite implementado~~ |
-| 5 | Documentação final em PDF | Entrega: 26/06/2026 |
+| 5 | Documentação final em PDF (descrição, arquitetura, diagramas UML, padrões) | Entrega: 26/06/2026 |
 
 ---
 
@@ -161,43 +191,49 @@ RepositorioJson<T>
 
 ```
 ClinicaMedica/
-├── Backend/
-│   ├── Core/
-│   │   ├── Models/Pessoa.cs                  ✓ classe abstrata base
-│   │   └── Repositories/IRepositorio.cs      ✓ contrato genérico CRUD
-│   ├── Medicos/
-│   │   ├── Interfaces/IMedicoRepositorio.cs  ✓
-│   │   ├── Models/Medico.cs                  ✓ herda de Pessoa
-│   │   └── Repositories/
-│   │       ├── MedicoRepositorio.cs          ✓ JSON — busca por CRM e especialidade
-│   │       └── MedicoRepositorioSql.cs       ✓ SQLite
-│   ├── Pacientes/
-│   │   ├── Interfaces/IPacienteRepositorio.cs ✓
-│   │   ├── Models/Paciente.cs                 ✓ herda de Pessoa
-│   │   └── Repositories/
-│   │       ├── PacienteRepositorio.cs         ✓ JSON — busca por CPF
-│   │       └── PacienteRepositorioSql.cs      ✓ SQLite
-│   └── Consultas/
-│       ├── Exceptions/
-│       │   ├── ConsultaConflitanteException.cs    ✓
-│       │   └── LimiteConsultasDiariasException.cs ✓
-│       ├── Interfaces/IConsultaRepositorio.cs     ✓
-│       ├── Models/
-│       │   ├── Consulta.cs                        ✓ entidade com ciclo de vida
-│       │   └── Prescricao.cs                      ✓
-│       ├── Repositories/
-│       │   ├── ConsultaRepositorio.cs             ✓ JSON
-│       │   └── ConsultaRepositorioSql.cs          ✓ SQLite
-│       └── Services/AgendamentoService.cs         ✓ regras de negócio centralizadas
-├── Database/
-│   ├── Json/
-│   │   └── RepositorioJson.cs        ✓ base abstrata para persistência em JSON
-│   └── Sqlite/
-│       ├── ConexaoBanco.cs           ✓ gerencia conexões SQLite
-│       ├── InicializadorBanco.cs     ✓ DDL idempotente na inicialização
-│       └── RepositorioBD.cs          ✓ base abstrata para persistência em SQLite
-├── UI/
-│   └── MenuConsole.cs                ✓ menu interativo completo
-│   └── [interface gráfica]           ✗ pendente
-└── Program.cs                        ✓ ponto de entrada — SQLite ativo; JSON comentado
+└── App/
+    ├── Backend/
+    │   ├── Core/
+    │   │   ├── Models/Pessoa.cs                    ✓ classe abstrata base
+    │   │   └── Repositories/IRepositorio.cs        ✓ contrato genérico CRUD
+    │   ├── Medicos/
+    │   │   ├── Interfaces/IMedicoRepositorio.cs    ✓
+    │   │   ├── Models/Medico.cs                    ✓ herda de Pessoa
+    │   │   └── Repositories/
+    │   │       ├── MedicoRepositorio.cs            ✓ JSON — busca por CRM e especialidade
+    │   │       └── MedicoRepositorioSql.cs         ✓ SQLite
+    │   ├── Pacientes/
+    │   │   ├── Interfaces/IPacienteRepositorio.cs  ✓
+    │   │   ├── Models/Paciente.cs                  ✓ herda de Pessoa
+    │   │   └── Repositories/
+    │   │       ├── PacienteRepositorio.cs          ✓ JSON — busca por CPF
+    │   │       └── PacienteRepositorioSql.cs       ✓ SQLite
+    │   └── Consultas/
+    │       ├── Exceptions/
+    │       │   ├── ConsultaConflitanteException.cs     ✓
+    │       │   └── LimiteConsultasDiariasException.cs  ✓
+    │       ├── Interfaces/IConsultaRepositorio.cs      ✓
+    │       ├── Models/
+    │       │   ├── Consulta.cs                         ✓ ciclo de vida + diagnóstico + prescrições
+    │       │   └── Prescricao.cs                       ✓
+    │       ├── Repositories/
+    │       │   ├── ConsultaRepositorio.cs              ✓ JSON
+    │       │   └── ConsultaRepositorioSql.cs           ✓ SQLite
+    │       └── Services/AgendamentoService.cs          ✓ regras de negócio centralizadas
+    ├── Database/
+    │   ├── Json/
+    │   │   └── RepositorioJson.cs          ✓ base abstrata para persistência em JSON
+    │   └── Sqlite/
+    │       ├── ConexaoBanco.cs             ✓ gerencia conexões SQLite
+    │       ├── InicializadorBanco.cs       ✓ DDL idempotente na inicialização
+    │       └── RepositorioBD.cs            ✓ base abstrata para persistência em SQLite
+    ├── UI/
+    │   └── TextUI/
+    │       ├── MenuConsole.cs              ✓ menu principal
+    │       ├── Medicos/MedicosMenu.cs      ✓
+    │       ├── Pacientes/PacientesMenu.cs  ✓
+    │       ├── Consultas/ConsultasMenu.cs  ✓
+    │       ├── Shared/ConsoleHelper.cs     ✓
+    │       └── [interface gráfica]         ✗ pendente
+    └── Program.cs                          ✓ ponto de entrada — SQLite ativo; JSON comentado
 ```
