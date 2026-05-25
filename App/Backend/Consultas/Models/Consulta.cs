@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace ClinicaMedica.Backend.Consultas.Models;
 
 public enum StatusConsulta
@@ -10,6 +12,9 @@ public enum StatusConsulta
 public class Consulta
 {
     private DateTime _dataHora;
+    private StatusConsulta _status = StatusConsulta.Agendada;
+    private string _diagnostico = string.Empty;
+    private readonly List<Prescricao> _prescricoes = new();
 
     public int Id { get; set; }
     public int MedicoId { get; set; }
@@ -26,10 +31,10 @@ public class Consulta
         }
     }
 
-    public StatusConsulta Status { get; set; } = StatusConsulta.Agendada;
+    public StatusConsulta Status => _status;
     public string Observacoes { get; set; } = string.Empty;
-    public string Diagnostico { get; set; } = string.Empty;
-    public List<Prescricao> Prescricoes { get; set; } = new();
+    public string Diagnostico => _diagnostico;
+    public IReadOnlyList<Prescricao> Prescricoes => _prescricoes;
 
     public Consulta() { }
 
@@ -42,50 +47,60 @@ public class Consulta
         Observacoes = observacoes;
     }
 
-    // Construtor para hidratar objetos carregados do banco de dados.
-    // Define _dataHora diretamente para não disparar a validação de data passada.
-    internal Consulta(int id, int medicoId, int pacienteId, DateTime dataHoraRaw,
-        string observacoes, string diagnostico, StatusConsulta status)
+    // Construtor de hidratação — usado pelo JSON (via [JsonConstructor]) e pelo repositório SQL.
+    // Define _dataHora diretamente para não disparar a validação de data passada em dados históricos.
+    [JsonConstructor]
+    public Consulta(int id, int medicoId, int pacienteId, DateTime dataHora,
+        string observacoes, string diagnostico, StatusConsulta status, List<Prescricao>? prescricoes)
     {
         Id = id;
         MedicoId = medicoId;
         PacienteId = pacienteId;
-        _dataHora = dataHoraRaw;
+        _dataHora = dataHora;
         Observacoes = observacoes;
-        Diagnostico = diagnostico;
-        Status = status;
+        _diagnostico = diagnostico;
+        _status = status;
+        if (prescricoes != null)
+            _prescricoes.AddRange(prescricoes);
+    }
+
+    // Permite que os repositórios populem as prescrições após a hidratação do objeto.
+    internal void DefinirPrescricoes(IEnumerable<Prescricao> prescricoes)
+    {
+        _prescricoes.Clear();
+        _prescricoes.AddRange(prescricoes);
     }
 
     public void Cancelar()
     {
-        if (Status == StatusConsulta.Realizada)
+        if (_status == StatusConsulta.Realizada)
             throw new InvalidOperationException("Não é possível cancelar uma consulta já realizada.");
-        if (Status == StatusConsulta.Cancelada)
+        if (_status == StatusConsulta.Cancelada)
             throw new InvalidOperationException("A consulta já está cancelada.");
-        Status = StatusConsulta.Cancelada;
+        _status = StatusConsulta.Cancelada;
     }
 
     public void MarcarRealizada()
     {
-        if (Status == StatusConsulta.Cancelada)
+        if (_status == StatusConsulta.Cancelada)
             throw new InvalidOperationException("Não é possível realizar uma consulta cancelada.");
-        Status = StatusConsulta.Realizada;
+        _status = StatusConsulta.Realizada;
     }
 
     public void RegistrarDiagnostico(string diagnostico)
     {
-        if (Status != StatusConsulta.Realizada)
+        if (_status != StatusConsulta.Realizada)
             throw new InvalidOperationException("Diagnóstico só pode ser registrado em consultas realizadas.");
         if (string.IsNullOrWhiteSpace(diagnostico))
             throw new ArgumentException("Diagnóstico não pode ser vazio.");
-        Diagnostico = diagnostico.Trim();
+        _diagnostico = diagnostico.Trim();
     }
 
     public void AdicionarPrescricao(Prescricao prescricao)
     {
-        if (Status != StatusConsulta.Realizada)
+        if (_status != StatusConsulta.Realizada)
             throw new InvalidOperationException("Prescrições só podem ser adicionadas em consultas realizadas.");
-        Prescricoes.Add(prescricao);
+        _prescricoes.Add(prescricao);
     }
 
     public override string ToString() =>

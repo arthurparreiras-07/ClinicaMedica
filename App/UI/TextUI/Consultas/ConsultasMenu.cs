@@ -255,7 +255,7 @@ public class ConsultasMenu
             if (c.Prescricoes.Count > 0)
             {
                 Console.WriteLine("  │  Prescrições:");
-                c.Prescricoes.ForEach(p => Console.WriteLine($"  │    • {p}"));
+                foreach (var p in c.Prescricoes) Console.WriteLine($"  │    • {p}");
             }
             Console.WriteLine("  └─");
         }

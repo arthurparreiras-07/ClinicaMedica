@@ -42,7 +42,7 @@ public class ConsultaRepositorioSql : RepositorioBD<Consulta>, IConsultaReposito
         using (var reader = cmd.ExecuteReader())
             consulta = reader.Read() ? LerConsulta(reader) : null;
         if (consulta != null)
-            consulta.Prescricoes = CarregarPrescricoes(conn, consulta.Id);
+            consulta.DefinirPrescricoes(CarregarPrescricoes(conn, consulta.Id));
         return consulta;
     }
 
@@ -76,7 +76,7 @@ public class ConsultaRepositorioSql : RepositorioBD<Consulta>, IConsultaReposito
         }
 
         foreach (var c in consultas)
-            c.Prescricoes = prescricoes.TryGetValue(c.Id, out var lista) ? lista : new List<Prescricao>();
+            c.DefinirPrescricoes(prescricoes.TryGetValue(c.Id, out var lista) ? lista : new List<Prescricao>());
 
         return consultas;
     }
@@ -142,7 +142,7 @@ public class ConsultaRepositorioSql : RepositorioBD<Consulta>, IConsultaReposito
                 lista.Add(LerConsulta(reader));
         }
         foreach (var c in lista)
-            c.Prescricoes = CarregarPrescricoes(conn, c.Id);
+            c.DefinirPrescricoes(CarregarPrescricoes(conn, c.Id));
         return lista;
     }
 
@@ -191,7 +191,7 @@ public class ConsultaRepositorioSql : RepositorioBD<Consulta>, IConsultaReposito
                 lista.Add(LerConsulta(reader));
         }
         foreach (var c in lista)
-            c.Prescricoes = CarregarPrescricoes(conn, c.Id);
+            c.DefinirPrescricoes(CarregarPrescricoes(conn, c.Id));
         return lista;
     }
 
@@ -226,5 +226,6 @@ public class ConsultaRepositorioSql : RepositorioBD<Consulta>, IConsultaReposito
         new(r.GetInt32(0), r.GetInt32(1), r.GetInt32(2),
             DateTime.Parse(r.GetString(3)),
             r.GetString(5), r.GetString(6),
-            Enum.Parse<StatusConsulta>(r.GetString(4)));
+            Enum.Parse<StatusConsulta>(r.GetString(4)),
+            null); // prescrições carregadas separadamente via DefinirPrescricoes
 }
