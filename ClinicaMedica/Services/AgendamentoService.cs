@@ -72,4 +72,20 @@ public class AgendamentoService
 
     public IEnumerable<Consulta> ListarTodas() =>
         _consultaRepo.ListarTodos().OrderBy(c => c.DataHora);
+
+    public void RegistrarDiagnostico(int consultaId, string diagnostico)
+    {
+        var consulta = _consultaRepo.BuscarPorId(consultaId)
+            ?? throw new KeyNotFoundException($"Consulta ID {consultaId} não encontrada.");
+        consulta.RegistrarDiagnostico(diagnostico);
+        _consultaRepo.Atualizar(consulta);
+    }
+
+    public void AdicionarPrescricao(int consultaId, Prescricao prescricao)
+    {
+        var consulta = _consultaRepo.BuscarPorId(consultaId)
+            ?? throw new KeyNotFoundException($"Consulta ID {consultaId} não encontrada.");
+        consulta.AdicionarPrescricao(prescricao);
+        _consultaRepo.Atualizar(consulta);
+    }
 }

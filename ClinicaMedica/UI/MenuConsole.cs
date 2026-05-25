@@ -230,8 +230,9 @@ public class MenuConsole
             Console.WriteLine("  2. Cancelar consulta");
             Console.WriteLine("  3. Marcar como realizada");
             Console.WriteLine("  4. Consultas do dia");
-            Console.WriteLine("  5. Histórico por paciente");
+            Console.WriteLine("  5. Prontuário do paciente");
             Console.WriteLine("  6. Agenda de um médico");
+            Console.WriteLine("  7. Registrar diagnóstico/prescrição");
             Console.WriteLine("  0. Voltar");
             Console.Write("\nOpção: ");
 
@@ -243,6 +244,7 @@ public class MenuConsole
                 case "4": ConsultasDoDia(); break;
                 case "5": HistoricoPaciente(); break;
                 case "6": AgendaMedico(); break;
+                case "7": RegistrarDiagnosticoPrescricao(); break;
                 case "0": return;
                 default: Aviso("Opção inválida."); break;
             }
@@ -255,7 +257,9 @@ public class MenuConsole
         Titulo("AGENDAR CONSULTA");
         try
         {
-            ListarMedicosInline();
+            Console.Write("  Filtrar por especialidade (Enter para listar todos): ");
+            var filtro = Console.ReadLine()?.Trim();
+            ListarMedicosInline(string.IsNullOrEmpty(filtro) ? null : filtro);
             var medicoId = LerInt("ID do médico");
 
             ListarPacientesInline();
@@ -307,6 +311,19 @@ public class MenuConsole
             var id = LerInt("ID da consulta");
             _agendamento.MarcarRealizada(id);
             Sucesso("Consulta marcada como realizada.");
+
+            Console.Write("\n  Registrar diagnóstico agora? (s/N): ");
+            if (Console.ReadLine()?.Trim().Equals("s", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                var diagnostico = Ler("Diagnóstico");
+                if (!string.IsNullOrEmpty(diagnostico))
+                {
+                    _agendamento.RegistrarDiagnostico(id, diagnostico);
+                    Console.Write("\n  Adicionar prescrições? (s/N): ");
+                    if (Console.ReadLine()?.Trim().Equals("s", StringComparison.OrdinalIgnoreCase) == true)
+                        AdicionarPrescricoesLoop(id);
+                }
+            }
         }
         catch (Exception ex) { Erro(ex.Message); }
         Pausar();
@@ -338,7 +355,7 @@ public class MenuConsole
     private void HistoricoPaciente()
     {
         Console.Clear();
-        Titulo("HISTÓRICO DO PACIENTE");
+        Titulo("PRONTUÁRIO DO PACIENTE");
         try
         {
             ListarPacientesInline();
@@ -348,10 +365,31 @@ public class MenuConsole
 
             Console.WriteLine($"\n  Paciente: {paciente.ExibirInformacoes()}\n");
             var lista = _agendamento.ListarPorPaciente(id).ToList();
-            ExibirConsultas(lista);
+            ExibirProntuario(lista);
         }
         catch (Exception ex) { Erro(ex.Message); }
         Pausar();
+    }
+
+    private void ExibirProntuario(List<Consulta> lista)
+    {
+        if (!lista.Any()) { Console.WriteLine("  Nenhuma consulta encontrada."); return; }
+
+        foreach (var c in lista)
+        {
+            var medico = _medicoRepo.BuscarPorId(c.MedicoId);
+            Console.WriteLine($"\n  ┌─ #{c.Id:D4} {c.DataHora:dd/MM/yyyy HH:mm} — {medico?.Nome ?? "?"} ({medico?.Especialidade ?? "?"}) [{c.Status}]");
+            if (!string.IsNullOrEmpty(c.Observacoes))
+                Console.WriteLine($"  │  Obs: {c.Observacoes}");
+            if (!string.IsNullOrEmpty(c.Diagnostico))
+                Console.WriteLine($"  │  Diagnóstico: {c.Diagnostico}");
+            if (c.Prescricoes.Count > 0)
+            {
+                Console.WriteLine("  │  Prescrições:");
+                c.Prescricoes.ForEach(p => Console.WriteLine($"  │    • {p}"));
+            }
+            Console.WriteLine("  └─");
+        }
     }
 
     private void AgendaMedico()
@@ -373,6 +411,44 @@ public class MenuConsole
         Pausar();
     }
 
+    private void RegistrarDiagnosticoPrescricao()
+    {
+        Console.Clear();
+        Titulo("REGISTRAR DIAGNÓSTICO / PRESCRIÇÃO");
+        try
+        {
+            var id = LerInt("ID da consulta (deve estar como Realizada)");
+            var diagnostico = Ler("Diagnóstico");
+            if (!string.IsNullOrEmpty(diagnostico))
+                _agendamento.RegistrarDiagnostico(id, diagnostico);
+
+            Console.Write("\n  Adicionar prescrições? (s/N): ");
+            if (Console.ReadLine()?.Trim().Equals("s", StringComparison.OrdinalIgnoreCase) == true)
+                AdicionarPrescricoesLoop(id);
+
+            Sucesso("Prontuário atualizado.");
+        }
+        catch (Exception ex) { Erro(ex.Message); }
+        Pausar();
+    }
+
+    private void AdicionarPrescricoesLoop(int consultaId)
+    {
+        while (true)
+        {
+            Console.WriteLine();
+            var medicamento = Ler("Medicamento (Enter para finalizar)");
+            if (string.IsNullOrEmpty(medicamento)) break;
+
+            var dosagem = Ler("Dosagem");
+            Console.Write("  Instruções (opcional): ");
+            var instrucoes = Console.ReadLine()?.Trim() ?? string.Empty;
+
+            _agendamento.AdicionarPrescricao(consultaId, new Prescricao(medicamento, dosagem, instrucoes));
+            Sucesso("Prescrição adicionada.");
+        }
+    }
+
     // ── HELPERS ───────────────────────────────────────────────────────────────
 
     private void ExibirConsultas(List<Consulta> lista)
@@ -390,13 +466,25 @@ public class MenuConsole
         }
     }
 
-    private void ListarMedicosInline()
+    private void ListarMedicosInline(string? filtroEspecialidade = null)
     {
-        var lista = _medicoRepo.ListarTodos().ToList();
+        var lista = string.IsNullOrEmpty(filtroEspecialidade)
+            ? _medicoRepo.ListarTodos().ToList()
+            : _medicoRepo.BuscarPorEspecialidade(filtroEspecialidade).ToList();
+
         if (lista.Any())
         {
-            Console.WriteLine("\n  Médicos disponíveis:");
+            var titulo = string.IsNullOrEmpty(filtroEspecialidade)
+                ? "Médicos disponíveis:"
+                : $"Médicos — especialidade \"{filtroEspecialidade}\":";
+            Console.WriteLine($"\n  {titulo}");
             lista.ForEach(m => Console.WriteLine($"    [{m.Id}] {m.Nome} — {m.Especialidade}"));
+        }
+        else
+        {
+            Console.WriteLine(string.IsNullOrEmpty(filtroEspecialidade)
+                ? "\n  Nenhum médico cadastrado."
+                : $"\n  Nenhum médico encontrado para a especialidade \"{filtroEspecialidade}\".");
         }
     }
 

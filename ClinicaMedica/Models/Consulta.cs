@@ -28,6 +28,8 @@ public class Consulta
 
     public StatusConsulta Status { get; set; } = StatusConsulta.Agendada;
     public string Observacoes { get; set; } = string.Empty;
+    public string Diagnostico { get; set; } = string.Empty;
+    public List<Prescricao> Prescricoes { get; set; } = new();
 
     public Consulta() { }
 
@@ -54,6 +56,22 @@ public class Consulta
         if (Status == StatusConsulta.Cancelada)
             throw new InvalidOperationException("Não é possível realizar uma consulta cancelada.");
         Status = StatusConsulta.Realizada;
+    }
+
+    public void RegistrarDiagnostico(string diagnostico)
+    {
+        if (Status != StatusConsulta.Realizada)
+            throw new InvalidOperationException("Diagnóstico só pode ser registrado em consultas realizadas.");
+        if (string.IsNullOrWhiteSpace(diagnostico))
+            throw new ArgumentException("Diagnóstico não pode ser vazio.");
+        Diagnostico = diagnostico.Trim();
+    }
+
+    public void AdicionarPrescricao(Prescricao prescricao)
+    {
+        if (Status != StatusConsulta.Realizada)
+            throw new InvalidOperationException("Prescrições só podem ser adicionadas em consultas realizadas.");
+        Prescricoes.Add(prescricao);
     }
 
     public override string ToString() =>
