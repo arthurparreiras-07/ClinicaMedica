@@ -1,4 +1,4 @@
-namespace ClinicaMedica.Interfaces;
+namespace ClinicaMedica.Backend.Core.Repositories;
 
 public interface IRepositorio<T>
 {

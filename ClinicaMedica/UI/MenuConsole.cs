@@ -1,17 +1,20 @@
-using ClinicaMedica.Exceptions;
-using ClinicaMedica.Models;
-using ClinicaMedica.Repositories;
-using ClinicaMedica.Services;
+using ClinicaMedica.Backend.Consultas.Exceptions;
+using ClinicaMedica.Backend.Consultas.Models;
+using ClinicaMedica.Backend.Consultas.Services;
+using ClinicaMedica.Backend.Medicos.Interfaces;
+using ClinicaMedica.Backend.Medicos.Models;
+using ClinicaMedica.Backend.Pacientes.Interfaces;
+using ClinicaMedica.Backend.Pacientes.Models;
 
 namespace ClinicaMedica.UI;
 
 public class MenuConsole
 {
-    private readonly MedicoRepositorio _medicoRepo;
-    private readonly PacienteRepositorio _pacienteRepo;
+    private readonly IMedicoRepositorio _medicoRepo;
+    private readonly IPacienteRepositorio _pacienteRepo;
     private readonly AgendamentoService _agendamento;
 
-    public MenuConsole(MedicoRepositorio medicoRepo, PacienteRepositorio pacienteRepo, AgendamentoService agendamento)
+    public MenuConsole(IMedicoRepositorio medicoRepo, IPacienteRepositorio pacienteRepo, AgendamentoService agendamento)
     {
         _medicoRepo = medicoRepo;
         _pacienteRepo = pacienteRepo;

@@ -2,7 +2,7 @@
 
 **Disciplina:** Programação Orientada por Objetos — PUC Minas Betim  
 **Entrega final:** 26/06/2026 | **Apresentação:** 26/06/2026  
-**Última atualização:** 25/05/2026
+**Última atualização:** 25/05/2026 (rev. 2)
 
 ---
 
@@ -12,7 +12,7 @@
 |-----------|:---------:|:--------:|:-----:|
 | Requisitos funcionais | 8 | 0 | 8 |
 | Pilares da POO | 4 | 0 | 4 |
-| Requisitos adicionais | 4 | 3 | 7 |
+| Requisitos adicionais | 5 | 2 | 7 |
 | Documentação | 3 | 1 | 4 |
 
 ---
@@ -53,14 +53,14 @@
 ### Concluído
 
 - [x] **Menu interativo no console** — Menu hierárquico completo (Médicos / Pacientes / Consultas) com submenus e navegação em loop (`MenuConsole.cs`)
-- [x] **Armazenamento de dados em JSON** — Persistência automática via `System.Text.Json`; três arquivos separados (`medicos.json`, `pacientes.json`, `consultas.json`) em `ClinicaMedica/data/`
-- [x] **Validações e tratamento de exceções** — Exceções de domínio próprias (`ConsultaConflitanteException`, `LimiteConsultasDiariasException`); tratamento de `ArgumentException`, `InvalidOperationException` e `KeyNotFoundException` em toda a UI
+- [x] **Armazenamento de dados em JSON** — Persistência automática via `System.Text.Json`; três arquivos separados em `Database/Json/`
+- [x] **Banco de dados SQLite** — Implementação completa com `RepositorioBD<T>`, `ConexaoBanco`, `InicializadorBanco` e três repositórios SQL (`MedicoRepositorioSql`, `PacienteRepositorioSql`, `ConsultaRepositorioSql`) em `Database/Sqlite/`; o `Program.cs` usa SQLite por padrão com fallback JSON comentado
+- [x] **Validações e tratamento de exceções** — Exceções de domínio próprias (`ConsultaConflitanteException`, `LimiteConsultasDiariasException`); repositórios lançam `KeyNotFoundException` (registro não encontrado) e `InvalidOperationException` (CPF/CRM duplicado) tanto nas implementações JSON quanto SQLite; UI captura e exibe todas as exceções de forma amigável
+- [x] **Padrões de projeto documentados** — Ver seção abaixo
 
 ### Pendente
 
 - [ ] **Interface gráfica** — Nenhuma tela gráfica implementada ainda; apenas o console. Requer decisão de tecnologia (WinForms, WPF ou MAUI)
-- [ ] **Banco de dados** — Atualmente tudo em JSON. A interface `IRepositorio<T>` já prepara a migração: basta criar implementações de repositório para o banco escolhido sem alterar `AgendamentoService` ou a UI
-- [x] **Padrões de projeto documentados** — Ver seção abaixo
 - [ ] **README com instruções completas de compilação/execução** — Existe, mas os nomes dos integrantes estão como placeholders e precisam ser preenchidos
 
 ---
@@ -152,8 +152,8 @@ RepositorioJson<T>
 | 2 | Entregar `ENTREGA_PARCIAL.md` convertido em PDF no Canvas | Prazo: 31/05/2026 |
 | 3 | Definir tecnologia de interface gráfica (WinForms / WPF / MAUI) | Decisão que afeta todo o desenvolvimento seguinte |
 | 4 | Implementar interface gráfica | Requisito obrigatório do trabalho |
-| 5 | Migração para banco de dados | Arquitetura já prepara essa mudança via `IRepositorio<T>` |
-| 6 | Documentação final em PDF | Entrega: 26/06/2026 |
+| ~~5~~ | ~~Migração para banco de dados~~ | ~~Concluído: SQLite implementado~~ |
+| 5 | Documentação final em PDF | Entrega: 26/06/2026 |
 
 ---
 
@@ -161,29 +161,43 @@ RepositorioJson<T>
 
 ```
 ClinicaMedica/
-├── Models/
-│   ├── Pessoa.cs                     ✓ classe abstrata base
-│   ├── Medico.cs                     ✓ herda de Pessoa
-│   ├── Paciente.cs                   ✓ herda de Pessoa
-│   └── Consulta.cs                   ✓ entidade de agendamento com ciclo de vida
-├── Interfaces/
-│   └── IRepositorio.cs               ✓ contrato genérico CRUD
-├── Repositories/
-│   ├── RepositorioJson.cs            ✓ persistência base em JSON
-│   ├── MedicoRepositorio.cs          ✓ busca por CRM e especialidade
-│   ├── PacienteRepositorio.cs        ✓ busca por CPF
-│   └── ConsultaRepositorio.cs        ✓ buscas por médico, paciente e data
-├── Services/
-│   └── AgendamentoService.cs         ✓ regras de negócio centralizadas
-├── Exceptions/
-│   ├── ConsultaConflitanteException.cs      ✓
-│   └── LimiteConsultasDiariasException.cs   ✓
+├── Backend/
+│   ├── Core/
+│   │   ├── Models/Pessoa.cs                  ✓ classe abstrata base
+│   │   └── Repositories/IRepositorio.cs      ✓ contrato genérico CRUD
+│   ├── Medicos/
+│   │   ├── Interfaces/IMedicoRepositorio.cs  ✓
+│   │   ├── Models/Medico.cs                  ✓ herda de Pessoa
+│   │   └── Repositories/
+│   │       ├── MedicoRepositorio.cs          ✓ JSON — busca por CRM e especialidade
+│   │       └── MedicoRepositorioSql.cs       ✓ SQLite
+│   ├── Pacientes/
+│   │   ├── Interfaces/IPacienteRepositorio.cs ✓
+│   │   ├── Models/Paciente.cs                 ✓ herda de Pessoa
+│   │   └── Repositories/
+│   │       ├── PacienteRepositorio.cs         ✓ JSON — busca por CPF
+│   │       └── PacienteRepositorioSql.cs      ✓ SQLite
+│   └── Consultas/
+│       ├── Exceptions/
+│       │   ├── ConsultaConflitanteException.cs    ✓
+│       │   └── LimiteConsultasDiariasException.cs ✓
+│       ├── Interfaces/IConsultaRepositorio.cs     ✓
+│       ├── Models/
+│       │   ├── Consulta.cs                        ✓ entidade com ciclo de vida
+│       │   └── Prescricao.cs                      ✓
+│       ├── Repositories/
+│       │   ├── ConsultaRepositorio.cs             ✓ JSON
+│       │   └── ConsultaRepositorioSql.cs          ✓ SQLite
+│       └── Services/AgendamentoService.cs         ✓ regras de negócio centralizadas
+├── Database/
+│   ├── Json/
+│   │   └── RepositorioJson.cs        ✓ base abstrata para persistência em JSON
+│   └── Sqlite/
+│       ├── ConexaoBanco.cs           ✓ gerencia conexões SQLite
+│       ├── InicializadorBanco.cs     ✓ DDL idempotente na inicialização
+│       └── RepositorioBD.cs          ✓ base abstrata para persistência em SQLite
 ├── UI/
 │   └── MenuConsole.cs                ✓ menu interativo completo
 │   └── [interface gráfica]           ✗ pendente
-├── data/
-│   ├── medicos.json                  ✓
-│   ├── pacientes.json                ✓
-│   └── consultas.json                ✓
-└── Program.cs                        ✓ ponto de entrada com injeção de dependências
+└── Program.cs                        ✓ ponto de entrada — SQLite ativo; JSON comentado
 ```

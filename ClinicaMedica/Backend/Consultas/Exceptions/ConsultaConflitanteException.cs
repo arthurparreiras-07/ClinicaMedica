@@ -1,4 +1,4 @@
-namespace ClinicaMedica.Exceptions;
+namespace ClinicaMedica.Backend.Consultas.Exceptions;
 
 public class ConsultaConflitanteException : Exception
 {

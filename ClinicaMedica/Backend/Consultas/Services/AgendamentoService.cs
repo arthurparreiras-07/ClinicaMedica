@@ -1,21 +1,23 @@
-using ClinicaMedica.Exceptions;
-using ClinicaMedica.Models;
-using ClinicaMedica.Repositories;
+using ClinicaMedica.Backend.Consultas.Exceptions;
+using ClinicaMedica.Backend.Consultas.Interfaces;
+using ClinicaMedica.Backend.Consultas.Models;
+using ClinicaMedica.Backend.Medicos.Interfaces;
+using ClinicaMedica.Backend.Pacientes.Interfaces;
 
-namespace ClinicaMedica.Services;
+namespace ClinicaMedica.Backend.Consultas.Services;
 
 public class AgendamentoService
 {
     private const int LimiteConsultasPorDia = 10;
 
-    private readonly ConsultaRepositorio _consultaRepo;
-    private readonly MedicoRepositorio _medicoRepo;
-    private readonly PacienteRepositorio _pacienteRepo;
+    private readonly IConsultaRepositorio _consultaRepo;
+    private readonly IMedicoRepositorio _medicoRepo;
+    private readonly IPacienteRepositorio _pacienteRepo;
 
     public AgendamentoService(
-        ConsultaRepositorio consultaRepo,
-        MedicoRepositorio medicoRepo,
-        PacienteRepositorio pacienteRepo)
+        IConsultaRepositorio consultaRepo,
+        IMedicoRepositorio medicoRepo,
+        IPacienteRepositorio pacienteRepo)
     {
         _consultaRepo = consultaRepo;
         _medicoRepo = medicoRepo;
